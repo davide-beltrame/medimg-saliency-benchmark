@@ -54,13 +54,6 @@ python scripts/download_data.py
 This will download the dataset to the path specified within the script (e.g., `data/raw/`).
 
 
-## Misc
-1.  Create a `local_config.json` (added to `.gitignore`) for local testing without modifying the main `config.json`.
-2.  If using Weights & Biases (`wandb`), log in via the CLI:
-    ```bash
-    python -c "import wandb; wandb.login()"
-    ```
-
 ## Repository Structure (Planned)
 ```bash
 ├── checkpoints/            
