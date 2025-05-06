@@ -9,20 +9,23 @@ We implement and train 5 models (with appropriate GAP + Linear layers at the end
 - DenseNet-121 (Proven effectiveness in chest X-ray tasks, Feature reuse via dense connections improves saliency sharpness)
 - EfficientNet-B0 (High performance per parameter; well-suited for medical imaging with limited data)
 - MobileNetV3 (Strong lightweight option for efficiency comparison)
+optional (after we have completed the project):
 - Vision Transformer (ViT-B/16)   - Offers fundamentally different saliency patterns, with attention-based reasoning)
 
-We sample 50 images from the test set and evaluate model performance using:
+We evaluate model performance on the entire test set using the metrics:
 - Area Under the ROC Curve (x-axis = FP, y-axis = TP)
 - F1 Score
 - Accuracy
 - Recall
 - Precision
 
-We ask human experts to annotate the regions they deem more important to determine whether or not the patient has covid infection, we obtain a binary mask. 
+We sample 50 images from the test set at random and proceed with the "humna expert alignment" analysis.
+
+We ask human experts to annotate the regions they deem more important to determine whether or not the patient has covid infection, we obtain a binary mask.
 
 We validate the agreement between annotators by computing IoU.
 
-We compute a final expert-level mask as the intersection of the annotated binary masks of all the experts.
+We compute a final expert-level mask as the intersection of the annotated binary masks of all the experts, after processing with morphological binary filters.
 
 We compute grad cams and compare them with the expert annotation using:
 - IoU (on binarized grad CAMs vs binary annotations)
@@ -30,32 +33,8 @@ We compute grad cams and compare them with the expert annotation using:
 
 Finally, we study correlation between model performance and alignment metrics.
 
-
-## TO-DOs
-- [x] Set up initial project structure and repository.
-- [ ] Finalize `config.json` structure and parameters.
-- [x] Implement data download script (`scripts/download_data.py`).
-- [ ] Run data download script to obtain the dataset.
-- [ ] Implement annotation script (`scripts/annotate_images.py`).
-- [ ] Select ~50 test images (COVID/Normal) for the annotation subset.
-- [ ] Perform manual annotation using the script and consolidate results (`data/annotations.csv`).
-- [ ] Implement utility function to convert annotations (clicks/boxes) to masks.
-- [ ] Implement data loaders (`src/datamodule.py`) for binary classification (COVID vs. Normal) with augmentation.
-- [ ] Implement model building functions (`src/models.py`) for ResNet50, DenseNet121, VGG16, MobileNetV2 using transfer learning.
-- [ ] Implement training script (`src/train.py`) with fine-tuning strategy and callbacks.
-- [ ] Train all specified models and save best checkpoints.
-- [ ] Implement Grad-CAM generation using `tf-keras-vis` (or `captum`).
-- [ ] Implement evaluation script (`src/evaluate.py`) calculating IoU and Pointing Game metrics against annotation masks.
-- [ ] Run evaluation script to generate results.
-- [ ] Draft the project report using the provided LaTeX template.
-- [ ] Complete helper functions in `src/utils.py`.
-- [ ] Refine README and add visualizations/results summary.
-
-## Key Decisions / Next Steps
-- Verify data download and structure.
-- Coordinate manual annotation process among team members.
-- Finalize the exact set of hyperparameters for training in `config.json`.
-- Decide on the specific thresholding strategy for Grad-CAM maps for IoU calculation.
+## Hyper-parameters
+- Image input size = 224x224 (downsample test and train)
 
 ## Usage
 
