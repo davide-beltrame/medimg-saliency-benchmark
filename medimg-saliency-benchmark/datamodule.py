@@ -49,7 +49,7 @@ class Dataset(Dataset):
         X = self.transform(X)
         
         # Convert to tensor the label
-        y = torch.tensor(y).to(float)
+        y = torch.tensor(y).to(torch.float32)
         
         return X, y
 
