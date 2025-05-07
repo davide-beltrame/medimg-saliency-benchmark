@@ -3,7 +3,7 @@ import os
 
 import lightning as pl
 from datamodule import Datamodule
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import ModelCheckpoint, LearningRateMonitor
 from lightning.pytorch.loggers import CSVLogger
 from models import BaseCNN
 from utils import BaseConfig
@@ -22,9 +22,6 @@ def main():
 
     # Load the datamodule
     datamodule = Datamodule(config)
-    
-    # To get the steps attribute for the annealing scheduler
-    config.n_steps = len(datamodule.train_ds) // config.batch_size
 
     # Instantiate a model
     model = BaseCNN(config=config)
@@ -39,6 +36,8 @@ def main():
         auto_insert_metric_name=False,  # To avoid issues when "/" in metric name
     )
 
+    # Monitor LR
+    lr_monitor = LearningRateMonitor(logging_interval='step')  
 
     # Init the trainer
     trainer = pl.Trainer(
@@ -49,8 +48,9 @@ def main():
         logger=logger,
         log_every_n_steps=1,
         enable_checkpointing=True,  # saves the most recent model after each epoch (default True)
-        callbacks=[checkpointer],
+        callbacks=[checkpointer, lr_monitor],
         enable_progress_bar=True,
+        val_check_interval=0.25,
     )
 
     # Train

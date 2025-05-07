@@ -137,8 +137,9 @@ class BaseCNN(pl.LightningModule):
         # The 1cycle policy (warm-up + annealing)
         scheduler = OneCycleLR(
             optimizer,
+            epochs=self.config.epochs,
+            steps_per_epoch=self.trainer.estimated_stepping_batches,
             max_lr=self.config.max_lr,
-            total_steps=self.config.n_steps,
             pct_start=self.config.pct_start,  # Warm-up percentage of total steps
         )
 
@@ -186,6 +187,7 @@ class ResNet50Binary(nn.Module):
         x = x.view(x.size(0), -1)    # [B, 2048]
         x = self.classifier(x)       # [B, 1]
         return x
+    
 
 class DenseNet121Binary(nn.Module):
     def __init__(self, pretrained=True):

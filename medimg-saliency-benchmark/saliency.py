@@ -28,13 +28,19 @@ class GradCAM:
 
         # Hook to capture gradients
         def backward_hook(module, grad_input, grad_output):
-            self.gradients = grad_output[0]
+            # use .detach() to avoid memory leaks
+            # https://github.com/pytorch/pytorch/issues/12863
+            self.gradients = grad_output[0].detach()    
 
         # Hook to capture activations
+        # The hook will be called every time after forward() 
+        # has computed an output. 
+        # It should have the following signature:
+        # hook(module, input, output) -> None or modified output
         def forward_hook(module, input, output):
             self.activations = output
 
-        # Register hooks on the last conv layer (layer4[-1] for ResNet50)
+        # Register hooks on the last conv layer
         target_layer = self.model.features[-1]  # Last convolution layer
         target_layer.register_forward_hook(forward_hook)
         target_layer.register_backward_hook(backward_hook)
