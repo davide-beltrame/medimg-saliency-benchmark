@@ -5,6 +5,7 @@ import lightning as pl
 import torch
 from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision import transforms
+from utils import BaseConfig
 
 class Dataset(Dataset):
     """
@@ -47,7 +48,7 @@ class Dataset(Dataset):
 
         # Apply transformations
         X = self.transform(X)
-        
+
         # Convert to tensor the label
         y = torch.tensor(y).to(torch.float32)
         
@@ -59,21 +60,15 @@ class Datamodule(pl.LightningDataModule):
     A custom datamodule to get the data, prepare it and return batches of X,y.
     """
 
-    def __init__(self):
+    def __init__(
+            self,
+            config:BaseConfig
+        ):
         super().__init__()
 
         # Set attributes
-        self.batch_size = 16
+        self.config = config
         self.num_workers = 2
-
-    def prepare_data(self):
-        # Download data
-        # Process once at the beginning of training
-        # Called on only 1 GPU (even in multi-GPU scenarios)
-        # Do not set state here (like self.x = y) as it won't be available across GPUs
-        pass
-
-    def setup(self, stage=None):
 
         # Init a dataset
         self.data = Dataset(split="train")
@@ -84,12 +79,12 @@ class Datamodule(pl.LightningDataModule):
         )
 
         # Prepare the test split
-        self.test_data = Dataset(split="test")
+        self.test_ds = Dataset(split="test")
 
     def train_dataloader(self):
         return DataLoader(
             self.train_ds,
-            batch_size=self.batch_size,
+            batch_size=self.config.batch_size,
             num_workers=self.num_workers,
             shuffle=True,
             pin_memory=True,
@@ -99,7 +94,7 @@ class Datamodule(pl.LightningDataModule):
     def val_dataloader(self):
         return DataLoader(
             self.val_ds,
-            batch_size=self.batch_size,
+            batch_size=self.config.batch_size,
             num_workers=self.num_workers,
             shuffle=False,
             pin_memory=True,
@@ -108,8 +103,8 @@ class Datamodule(pl.LightningDataModule):
     
     def test_dataloader(self):
         return DataLoader(
-            self.test_data,
-            batch_size=self.batch_size,
+            self.test_ds,
+            batch_size=self.config.batch_size,
             num_workers=self.num_workers,
             shuffle=False,
             pin_memory=True,

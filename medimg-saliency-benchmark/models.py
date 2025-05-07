@@ -1,57 +1,64 @@
-import json
-
 import lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchvision.models import resnet50, densenet121, efficientnet_b0, mobilenet_v3_large
-from torchmetrics.classification import BinaryPrecision, BinaryF1Score, BinaryAccuracy, BinaryRecall
+from torchvision.models import (
+    resnet50,
+    densenet121,
+    efficientnet_b0,
+    mobilenet_v3_large
+)
+from torcheval.metrics.functional import (
+    binary_accuracy,
+    binary_precision,
+    binary_recall,
+    binary_f1_score
+)
 from torch.optim.lr_scheduler import OneCycleLR
-
+from utils import BaseConfig
 
 class BaseCNN(pl.LightningModule):
     """
-    A base class to implement a Pytorch Lightning Model.
-    Hyper-parameters are specified in a separate config.json file.
+    The base CNN class implementing the training with binary cross entropy.
     """
 
     def __init__(
         self,
-        model:str=None,
-        pretrained:bool=False
+        config: BaseConfig
     ):
         super().__init__()
 
         # For checkpointing
         self.save_hyperparameters()
+        
+        # Save configuration file
+        self.config = config
 
         # The actual model
-        assert model in {"rn", "dn", "en", "mn"}
+        assert config.model in {"rn", "dn", "en", "mn"}
         
-        if model == "rn":
-            self.model = ResNet50Binary(pretrained=pretrained)
-        elif model == "dn":
-            self.model = DenseNet121Binary(pretrained=pretrained)
-        elif model == "en":
-            self.model = EfficientNetB0Binary(pretrained=pretrained)
-        elif model == "mn":
-            self.model = MobileNetV3Binary(pretrained=pretrained)
-
-        # To evaluate the model
-        self.accuracy = BinaryAccuracy()
-        self.recall = BinaryRecall()
-        self.precision = BinaryPrecision()
-        self.f1 = BinaryF1Score()
+        if config.model == "rn":
+            self.model = ResNet50Binary(pretrained=config.pretrained)
+        elif config.model == "dn":
+            self.model = DenseNet121Binary(pretrained=config.pretrained)
+        elif config.model == "en":
+            self.model = EfficientNetB0Binary(pretrained=config.pretrained)
+        elif config.model == "mn":
+            self.model = MobileNetV3Binary(pretrained=config.pretrained)
 
 
     def forward(self, X):
+        """
+        Simply forward the backbone model.
+        """
         return self.model(X)
 
     def _common_step(self, batch):
         """
-        Handles one step of the model, from reading in the batch to returning the loss.
+        Reads batch, gets logits, computes loss & other metrics..
         """
         # Read in the batch
+        # float32 & float32
         X, y = batch
         
         # Forward pass
@@ -63,47 +70,53 @@ class BaseCNN(pl.LightningModule):
             target=y.view(-1)
         )
 
-        return loss, logits
+        # For logging binary metrics
+        # [B,] of type float
+        preds = torch.nn.functional.sigmoid(logits).view(-1)
+        # required to be int
+        y = y.to(torch.int32)
+        metrics = {
+            "{stage}/loss": loss,
+            "{stage}/accuracy": binary_accuracy(preds, y),
+            "{stage}/recall": binary_recall(preds, y),
+            "{stage}/precision": binary_precision(preds, y),
+            "{stage}/f1": binary_f1_score(preds, y),   
+        }
+
+        return loss, metrics
 
     def training_step(self, batch, batch_idx):
+
         # Get the loss
-        loss, logits = self._common_step(batch)
+        loss, metrics = self._common_step(batch)
         
-        # Logging
-        self.log(
-            "train/loss",
-            loss,
-            on_step=True,
-            on_epoch=False,
-            prog_bar=True
+        # Log metrics with correct label
+        for k, v in metrics.items():
+            self.log(
+                k.format(stage="train"),
+                v,
+                on_step=True,
+                on_epoch=False,
+                prog_bar=True
         )
 
         return loss
 
     def validation_step(self, batch, batch_idx):
         
-        X, y = batch
-        
         # Get the loss
-        loss, logits = self._common_step(batch)
+        loss, metrics = self._common_step(batch)
 
-        # Get predictions
-        preds = torch.nn.functional.sigmoid(logits) > 0.5
-        preds = preds.view(-1)
-
-        # Compute metrics
-        metrics = {
-            "valid/accuracy": self.accuracy(preds, y),
-            "valid/recall": self.recall(preds, y),
-            "valid/precision": self.precision(preds, y),
-            "valid/f1": self.f1(preds, y),
-            "valid/loss": loss,
-        }
-
-        # Logging
+        # Log metrics with correct label
         for k, v in metrics.items():
-            self.log(k, v, on_step=False, on_epoch=True, prog_bar=True)
-
+            self.log(
+                k.format(stage="valid"),
+                v,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True
+        )
+            
         return loss
 
     def configure_optimizers(self):
@@ -118,20 +131,20 @@ class BaseCNN(pl.LightningModule):
         )
 
         # The 1cycle policy (warm-up + annealing)
-        # scheduler = OneCycleLR(
-        #     optimizer,
-        #     max_lr=0.01,
-        #     total_steps=100,
-        #     pct_start=0.1,  # Warm-up percentage of total steps
-        # )
+        scheduler = OneCycleLR(
+            optimizer,
+            max_lr=self.config.max_lr,
+            total_steps=self.config.n_steps,
+            pct_start=self.config.pct_start,  # Warm-up percentage of total steps
+        )
 
         return {
             "optimizer": optimizer,
-            # "lr_scheduler": {
-            #     "scheduler": scheduler,
-            #     "interval": "step",
-            #     "frequency": 1,  # Check after each step
-            # },
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "interval": "step",
+                "frequency": 1,  # Check after each step
+            },
         }
 
     @torch.no_grad()
