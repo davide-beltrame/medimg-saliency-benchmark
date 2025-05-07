@@ -118,6 +118,10 @@ class BaseCNN(pl.LightningModule):
         )
             
         return loss
+    
+    def test_step(self, batch, batch_idx):
+        # TODO
+        pass
 
     def configure_optimizers(self):
         """

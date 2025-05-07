@@ -1,7 +1,25 @@
+"""
+Implements the saliency methods.
+Saliency methods always take as input a model when initialized.
+The forward pass takes as input an image and returns the saliency map.
+"""
+
 import numpy as np
 import cv2
 
+class CAM:
+    """
+    Class Activation Map (CAM) saliency map.
+    Requires GAP layer + FC in the original model.
+    """
+    def __init__(self):
+        pass
+
 class GradCAM:
+    """
+    Grad-CAM saliency map.  
+    Can be applied to any model.
+    """
     def __init__(self, model):
         self.model = model
         self.model.eval()
@@ -39,3 +57,15 @@ class GradCAM:
         cam = cv2.resize(cam, (input_tensor.size(3), input_tensor.size(2)))
         cam = (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
         return cam  # [H, W] in [0, 1]
+
+class ScoreCAM:
+    """
+    Randomized input sampling for explanation (RISE).
+    Can be applied to any model.
+    
+    Apply random binary mask on input, the predicted class probability is a weight for the mask.
+    Aggregate multiple masks to obtain a saliency map
+    (masks hiding important features will have low weights, hence will be revelaed in the aggregation.
+    """
+    def __init__(self):
+        pass
