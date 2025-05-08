@@ -125,8 +125,24 @@ class BaseCNN(pl.LightningModule):
         return loss
     
     def test_step(self, batch, batch_idx):
-        # TODO
-        pass
+        
+        # Get the loss
+        loss, metrics = self._common_step(batch)
+
+        # Test-specific metric
+        metrics["batch_pos_perc"] = batch[1].mean()
+
+        # Log metrics with correct label
+        for k, v in metrics.items():
+            self.log(
+                k.format(stage="test"),
+                v,
+                on_step=False,
+                on_epoch=True,
+                prog_bar=True
+        )
+            
+        return loss
 
     def configure_optimizers(self):
         """
