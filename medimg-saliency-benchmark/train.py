@@ -19,7 +19,10 @@ def main():
     config = BaseConfig(args.path_to_config)
     
     # pui
-    run_name = f"{config.model}_{int(time.time())}"
+    if hasattr(config, "run_name"):
+        run_name = config.run_name
+    else:
+        run_name = f"{config.model}_{int(time.time())}"
 
     # Setup logging
     logger =  WandbLogger(
