@@ -3,10 +3,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.models import (
-    resnet50,
-    densenet121,
-    efficientnet_b0,
-    mobilenet_v3_large
+    resnet101, ResNet101_Weights,  # Updated import for ResNet101
+    vgg16, VGG16_Weights,  # Updated import for VGG16
+    inception_v3, Inception_V3_Weights,  # Updated import for InceptionNet
+    alexnet, AlexNet_Weights
 )
 from torcheval.metrics.functional import (
     binary_accuracy,
@@ -35,16 +35,16 @@ class BaseCNN(pl.LightningModule):
         self.config = config
 
         # The actual model
-        assert config.model in {"rn", "dn", "en", "mn"}
+        assert config.model in {"an", "vgg", "rn", "in"}
         
-        if config.model == "rn":
-            self.model = ResNet50Binary(pretrained=config.pretrained)
-        elif config.model == "dn":
-            self.model = DenseNet121Binary(pretrained=config.pretrained)
-        elif config.model == "en":
-            self.model = EfficientNetB0Binary(pretrained=config.pretrained)
-        elif config.model == "mn":
-            self.model = MobileNetV3Binary(pretrained=config.pretrained)
+        if config.model == "an":
+            self.model = AlexNetBinary(pretrained=config.pretrained, gap=config.gap)
+        elif config.model == "vgg":
+            self.model = VGG16Binary(pretrained=config.pretrained, gap=config.gap)
+        elif config.model == "rn":
+            self.model = ResNet101Binary(pretrained=config.pretrained, gap=config.gap)
+        elif config.model == "in":
+            self.model = InceptionNetBinary(pretrained=config.pretrained, gap=config.gap)
 
 
     def forward(self, X):
@@ -55,7 +55,7 @@ class BaseCNN(pl.LightningModule):
 
     def _common_step(self, batch):
         """
-        Reads batch, gets logits, computes loss & other metrics..
+        Reads batch, gets logits, computes loss & other metrics.
         """
         # Read in the batch
         # float32 & float32
@@ -90,6 +90,10 @@ class BaseCNN(pl.LightningModule):
         # Get the loss
         loss, metrics = self._common_step(batch)
         
+        # Train-specific metrics
+        metrics["lr"] = self.optimizers().optimizer.param_groups[0]["lr"]
+        metrics["batch_pos_perc"] = batch[1].mean()
+
         # Log metrics with correct label
         for k, v in metrics.items():
             self.log(
@@ -99,16 +103,6 @@ class BaseCNN(pl.LightningModule):
                 on_epoch=False,
                 prog_bar=True
         )
-            
-        # Log lr in training
-        self.log(
-            "lr",
-            self.optimizers().optimizer.param_groups[0]["lr"],
-            on_step=True,
-            on_epoch=False,
-            prog_bar=True
-        )
-
 
         return loss
 
@@ -181,68 +175,128 @@ class BaseCNN(pl.LightningModule):
         return probs.round()
 
 
-class ResNet50Binary(nn.Module):
-    def __init__(self, pretrained=True):
+class AlexNetBinary(nn.Module):
+    def __init__(self, pretrained=True, gap=True):
         super().__init__()
-        self.model = resnet50(pretrained=pretrained)
-
-        # Remove original classifier
-        self.features = nn.Sequential(*list(self.model.children())[:-2])  # Up to conv5_x
-        self.gap = nn.AdaptiveAvgPool2d((1, 1))  # GAP layer
-        self.classifier = nn.Linear(2048, 1)  # Binary output
-
-    def forward(self, x):
-        x = self.features(x)         # [B, 2048, H, W]                  # For Grad-CAM
-        x = self.gap(x)              # [B, 2048, 1, 1]
-        x = x.view(x.size(0), -1)    # [B, 2048]
-        x = self.classifier(x)       # [B, 1]
-        return x
+        weights = AlexNet_Weights.DEFAULT if pretrained else None
+        self.model = alexnet(weights=weights)
+        self.use_gap = gap
+        
+        if self.use_gap:
+            # Extract features (remove classifier)
+            self.features = self.model.features  # [B, 256, H, W]
+            self.gap = nn.AdaptiveAvgPool2d((1, 1))
+            self.classifier = nn.Linear(256, 1)  # AlexNet has 256 features at the last convolutional layer
+        else:
+            # Modify original classifier for binary output
+            num_ftrs = self.model.classifier[-1].in_features
+            self.model.classifier[-1] = nn.Linear(num_ftrs, 1)
     
-
-class DenseNet121Binary(nn.Module):
-    def __init__(self, pretrained=True):
-        super().__init__()
-        self.model = densenet121(pretrained=pretrained)
-        self.features = self.model.features  # [B, 1024, H, W]
-        self.gap = nn.AdaptiveAvgPool2d((1, 1))
-        self.classifier = nn.Linear(1024, 1)
-
     def forward(self, x):
-        x = self.features(x)
-        x = F.relu(x)
-        x = self.gap(x)
-        x = torch.flatten(x, 1)
-        x = self.classifier(x)
+        if self.use_gap:
+            x = self.features(x)
+            x = self.gap(x)
+            x = torch.flatten(x, 1)
+            x = self.classifier(x)
+        else:
+            x = self.model(x)
         return x
+
+
+class VGG16Binary(nn.Module):
+    def __init__(self, pretrained=True, gap=True):
+        super().__init__()
+        # Updated to use weights parameter instead of pretrained
+        weights = VGG16_Weights.DEFAULT if pretrained else None
+        self.model = vgg16(weights=weights)
+        self.use_gap = gap
+        
+        if self.use_gap:
+            # Extract features (remove classifier)
+            self.features = self.model.features  # [B, 512, H, W]
+            self.gap = nn.AdaptiveAvgPool2d((1, 1))
+            self.classifier = nn.Linear(512, 1)
+        else:
+            # Modify original classifier for binary output
+            num_ftrs = self.model.classifier[-1].in_features
+            self.model.classifier[-1] = nn.Linear(num_ftrs, 1)
     
-
-class EfficientNetB0Binary(nn.Module):
-    def __init__(self, pretrained=True):
-        super().__init__()
-        self.model = efficientnet_b0(pretrained=pretrained)
-        self.features = self.model.features  # [B, 1280, H, W]
-        self.gap = nn.AdaptiveAvgPool2d((1, 1))
-        self.classifier = nn.Linear(1280, 1)
-
     def forward(self, x):
-        x = self.features(x)
-        x = self.gap(x)
-        x = torch.flatten(x, 1)
-        x = self.classifier(x)
+        if self.use_gap:
+            x = self.features(x)
+            x = self.gap(x)
+            x = torch.flatten(x, 1)
+            x = self.classifier(x)
+        else:
+            x = self.model(x)
         return x
 
-
-class MobileNetV3Binary(nn.Module):
-    def __init__(self, pretrained=True):
+class ResNet101Binary(nn.Module):
+    def __init__(self, pretrained=True, gap=True):
         super().__init__()
-        self.model = mobilenet_v3_large(pretrained=pretrained)
-        self.features = self.model.features  # [B, 960, H, W]
-        self.gap = nn.AdaptiveAvgPool2d((1, 1))
-        self.classifier = nn.Linear(960, 1)
-
+        # Updated to use weights parameter instead of pretrained
+        weights = ResNet101_Weights.DEFAULT if pretrained else None
+        self.model = resnet101(weights=weights)
+        self.use_gap = gap
+        
+        if self.use_gap:
+            # Remove original classifier
+            self.features = nn.Sequential(*list(self.model.children())[:-2])  # Up to conv5_x
+            self.gap = nn.AdaptiveAvgPool2d((1, 1))  # GAP layer
+            self.classifier = nn.Linear(2048, 1)  # Binary output
+        else:
+            # Keep original structure but adapt final layer for binary
+            num_ftrs = self.model.fc.in_features
+            self.model.fc = nn.Linear(num_ftrs, 1)
+    
     def forward(self, x):
-        x = self.features(x)
-        x = self.gap(x)
-        x = torch.flatten(x, 1)
-        x = self.classifier(x)
+        if self.use_gap:
+            x = self.features(x)
+            x = self.gap(x)
+            x = x.view(x.size(0), -1)  # Flatten
+            x = self.classifier(x)
+        else:
+            x = self.model(x)
+        return x
+
+class InceptionNetBinary(nn.Module):
+    def __init__(self, pretrained=True, gap=True):
+        super().__init__()
+        # Updated to use weights parameter instead of pretrained
+        weights = Inception_V3_Weights.DEFAULT if pretrained else None
+        self.model = inception_v3(weights=weights)
+        self.use_gap = gap
+        
+        # Inception outputs with auxiliary classifier during training
+        # Set this to False to get just the main output when calling forward
+        self.model.aux_logits = False
+        self.min_input_size = 299
+
+        if self.use_gap:
+            # Remove original classifier and keep features
+            self.features = nn.Sequential(*list(self.model.children())[:-1])  # Remove fc layer
+            self.gap = nn.AdaptiveAvgPool2d((1, 1))
+            self.classifier = nn.Linear(2048, 1)  # InceptionV3 has 2048 features
+        else:
+            # Keep original structure but adapt final layer for binary
+            num_ftrs = self.model.fc.in_features
+            self.model.fc = nn.Linear(num_ftrs, 1)
+    
+    def forward(self, x):
+
+        # Inception expects 299x299 input; ensure input is properly sized
+        if x.shape[2] < self.min_input_size or x.shape[3] < self.min_input_size:
+            x = F.interpolate(
+                x,
+                size=(self.min_input_size, self.min_input_size), 
+                mode='bilinear',
+                align_corners=False
+            )
+        if self.use_gap:
+            x = self.features(x)
+            x = self.gap(x)
+            x = torch.flatten(x, 1)
+            x = self.classifier(x)
+        else:
+            x = self.model(x)
         return x

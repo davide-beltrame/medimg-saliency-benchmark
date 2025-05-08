@@ -2,3 +2,5 @@ __pycache__/
 data/
 lightning_logs
 checkpoints
+local_config.json
+wandb

@@ -1,8 +1,10 @@
 {
-    "model": "rn",
+    "model": "vgg",
     "pretrained": false,
-    "batch_size": 16,
-    "epochs": 2,
+    "gap": false,
+    "batch_size": 32,
+    "epochs": 10,
     "max_lr": 0.001,
-    "pct_start": 0.3
+    "pct_start": 0.1,
+    "wandb":false
 }
