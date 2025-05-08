@@ -36,9 +36,6 @@ def main():
         auto_insert_metric_name=False,  # To avoid issues when "/" in metric name
     )
 
-    # Monitor LR
-    lr_monitor = LearningRateMonitor(logging_interval='step')  
-
     # Init the trainer
     trainer = pl.Trainer(
         max_epochs=config.epochs,
@@ -48,7 +45,7 @@ def main():
         logger=logger,
         log_every_n_steps=1,
         enable_checkpointing=True,  # saves the most recent model after each epoch (default True)
-        callbacks=[checkpointer, lr_monitor],
+        callbacks=[checkpointer],
         enable_progress_bar=True,
         val_check_interval=0.25,
     )

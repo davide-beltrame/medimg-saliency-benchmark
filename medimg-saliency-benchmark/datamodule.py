@@ -23,7 +23,7 @@ class Dataset(Dataset):
         assert split in {"train", "test"}
 
         base_path = f"./data/{split}"
-        class_dirs = {"NORMAL": 0, "COVID19": 1}
+        class_dirs = {"NORMAL": 0, "PNEUMONIA": 1}
 
         self.imgs, self.targets = [], []
 
@@ -36,7 +36,7 @@ class Dataset(Dataset):
         
         # Print info about classes
         n_pos = sum(self.targets)
-        print(f"Init {split} dataset with {n_pos} covid images and {len(self.targets) - n_pos} normal images.")
+        print(f"Init {split} dataset with {n_pos} PNEUMONIA images and {len(self.targets) - n_pos} NORMAL images.")
 
         # Transormation to apply to the raw image
         self.transform = transforms.Compose([

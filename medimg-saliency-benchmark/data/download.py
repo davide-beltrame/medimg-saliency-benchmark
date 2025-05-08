@@ -9,10 +9,12 @@ import shutil
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Define dataset details
-DATASET_SLUG = "prashant268/chest-xray-covid19-pneumonia"
+# DATASET_SLUG = "prashant268/chest-xray-covid19-pneumonia"
+# DATASET_SLUG = "amanullahasraf/covid19-pneumonia-normal-chest-xray-pa-dataset"
+# DATASET_SLUG = "tolgadincer/labeled-chest-xray-images"
+DATASET_SLUG = "paultimothymooney/chest-xray-pneumonia"
 # Define target directory within your project structure
 # kagglehub downloads to ~/.cache by default, then we copy/move
-DOWNLOAD_CACHE_DIR = os.path.expanduser("~/.cache/kagglehub/datasets/prashant268/chest-xray-covid19-pneumonia")
 TARGET_DATA_DIR = "data/raw/chest-xray-covid19-pneumonia" # Where we want the data finally
 
 def download_and_extract_dataset(slug, final_path):

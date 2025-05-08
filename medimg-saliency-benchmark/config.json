@@ -1,8 +1,8 @@
 {
-    "model": "mn",
+    "model": "rn",
     "pretrained": false,
-    "batch_size": 1,
-    "epochs": 1,
+    "batch_size": 16,
+    "epochs": 2,
     "max_lr": 0.001,
     "pct_start": 0.3
 }

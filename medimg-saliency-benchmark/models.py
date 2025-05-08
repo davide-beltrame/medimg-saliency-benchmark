@@ -99,6 +99,16 @@ class BaseCNN(pl.LightningModule):
                 on_epoch=False,
                 prog_bar=True
         )
+            
+        # Log lr in training
+        self.log(
+            "lr",
+            self.optimizers().optimizer.param_groups[0]["lr"],
+            on_step=True,
+            on_epoch=False,
+            prog_bar=True
+        )
+
 
         return loss
 
