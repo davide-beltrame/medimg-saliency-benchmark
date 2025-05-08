@@ -25,6 +25,7 @@ def main():
     logger =  WandbLogger(
         name=run_name,
         project="CVIP",
+        config=config.__dict__
     ) if config.wandb else CSVLogger(save_dir=".")
 
     # Load the datamodule
