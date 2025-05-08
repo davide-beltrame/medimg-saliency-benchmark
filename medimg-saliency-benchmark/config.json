@@ -3,7 +3,7 @@
     "pretrained": false,
     "linear": false,
     "batch_size": 32,
-    "epochs": 1,
+    "epochs": 10,
     "max_lr": 0.001,
     "pct_start": 0.1,
     "wandb":false
