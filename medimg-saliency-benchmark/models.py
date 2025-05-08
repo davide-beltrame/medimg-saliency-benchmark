@@ -2,16 +2,17 @@ import lightning as pl
 import torch
 import torch.nn as nn
 from torchvision.models import (
-    resnet101, ResNet101_Weights,  # Updated import for ResNet101
-    vgg16, VGG16_Weights,  # Updated import for VGG16
-    googlenet, GoogLeNet_Weights,  # Updated import for Inception V1
+    resnet101, ResNet101_Weights,
+    vgg16, VGG16_Weights,
+    googlenet, GoogLeNet_Weights,
     alexnet, AlexNet_Weights
 )
-from torcheval.metrics.functional import (
-    binary_accuracy,
-    binary_precision,
-    binary_recall,
-    binary_f1_score
+from torchmetrics import MeanMetric
+from torchmetrics.classification import (
+    BinaryAccuracy, 
+    BinaryPrecision,
+    BinaryRecall,
+    BinaryF1Score
 )
 from torch.optim.lr_scheduler import OneCycleLR
 from utils import BaseConfig
@@ -45,8 +46,7 @@ class BaseCNN(pl.LightningModule):
             self.model = ResNet101Binary(pretrained=config.pretrained)  
         elif config.model == "in":
             assert config.linear # already GAP + FC, cannot be false
-            self.model = InceptionNetBinary(pretrained=config.pretrained)   
-
+            self.model = InceptionNetBinary(pretrained=config.pretrained)
 
     def forward(self, X):
         """
@@ -54,7 +54,7 @@ class BaseCNN(pl.LightningModule):
         """
         return self.model(X)
 
-    def _common_step(self, batch):
+    def _common_step(self, batch, stage):
         """
         Reads batch, gets logits, computes loss & other metrics.
         """
@@ -71,78 +71,91 @@ class BaseCNN(pl.LightningModule):
             target=y.view(-1)
         )
 
-        # For logging binary metrics
-        # [B,] of type float
+        # Convert predictions to probabilities
         preds = torch.nn.functional.sigmoid(logits).view(-1)
-        # required to be int
-        y = y.to(torch.int32)
-        metrics = {
-            "{stage}/loss": loss,
-            "{stage}/accuracy": binary_accuracy(preds, y),
-            "{stage}/recall": binary_recall(preds, y),
-            "{stage}/precision": binary_precision(preds, y),
-            "{stage}/f1": binary_f1_score(preds, y),   
-        }
+        
+        # Update metrics based on stage
+        if stage == "train":
+            # For training, log batch-level metrics
+            batch_metrics = {
+                "train/loss": loss,
+                "lr": self.optimizers().optimizer.param_groups[0]["lr"],
+                "batch_pos_perc": y.mean()
+            }
+            self.log_dict(batch_metrics, on_step=True, on_epoch=False, prog_bar=True)
+            
+        elif stage == "valid":
+            # For validation, update accumulated metrics
+            self.valid_loss(loss)
+            self.valid_accuracy(preds, y)
+            self.valid_precision(preds, y)
+            self.valid_recall(preds, y)
+            self.valid_f1(preds, y)
+            
+        elif stage == "test":
+            # For testing, update accumulated metrics
+            self.test_loss(loss)
+            self.test_accuracy(preds, y)
+            self.test_precision(preds, y)
+            self.test_recall(preds, y)
+            self.test_f1(preds, y)
+            
+            # Log batch pos percentage (just for info)
+            self.log("test/batch_pos_perc", y.mean(), on_step=False, on_epoch=True)
 
-        return loss, metrics
+        return loss
 
     def training_step(self, batch, batch_idx):
-
-        # Get the loss
-        loss, metrics = self._common_step(batch)
-        
-        # Train-specific metrics
-        metrics["lr"] = self.optimizers().optimizer.param_groups[0]["lr"]
-        metrics["batch_pos_perc"] = batch[1].mean()
-
-        # Log metrics with correct label
-        for k, v in metrics.items():
-            self.log(
-                k.format(stage="train"),
-                v,
-                on_step=True,
-                on_epoch=False,
-                prog_bar=True
-        )
-
-        return loss
+        return self._common_step(batch, "train")
 
     def validation_step(self, batch, batch_idx):
-        
-        # Get the loss
-        loss, metrics = self._common_step(batch)
-
-        # Log metrics with correct label
-        for k, v in metrics.items():
-            self.log(
-                k.format(stage="valid"),
-                v,
-                on_step=False,
-                on_epoch=True,
-                prog_bar=True
-        )
-            
-        return loss
+        return self._common_step(batch, "valid")
     
     def test_step(self, batch, batch_idx):
+        return self._common_step(batch, "test")
+    
+    def on_validation_epoch_start(self):
+        # Initialize validation metrics
+        self.valid_loss = MeanMetric().to(self.device)
+        self.valid_accuracy = BinaryAccuracy().to(self.device)
+        self.valid_precision = BinaryPrecision().to(self.device)
+        self.valid_recall = BinaryRecall().to(self.device)
+        self.valid_f1 = BinaryF1Score().to(self.device)
+    
+    def on_test_epoch_start(self):
+        # Initialize test metrics as requested
+        self.test_loss = MeanMetric().to(self.device)
+        self.test_accuracy = BinaryAccuracy().to(self.device)
+        self.test_precision = BinaryPrecision().to(self.device)
+        self.test_recall = BinaryRecall().to(self.device)
+        self.test_f1 = BinaryF1Score().to(self.device)
+    
+    def on_validation_epoch_end(self):
+        # Compute final metrics over the entire validation set
+        metrics = {
+            "valid/loss": self.valid_loss.compute(),
+            "valid/accuracy": self.valid_accuracy.compute(),
+            "valid/precision": self.valid_precision.compute(),
+            "valid/recall": self.valid_recall.compute(),
+            "valid/f1": self.valid_f1.compute()
+        }
         
-        # Get the loss
-        loss, metrics = self._common_step(batch)
-
-        # Test-specific metric
-        metrics["batch_pos_perc"] = batch[1].mean()
-
-        # Log metrics with correct label
-        for k, v in metrics.items():
-            self.log(
-                k.format(stage="test"),
-                v,
-                on_step=False,
-                on_epoch=True,
-                prog_bar=True
-        )
-            
-        return loss
+        # Log the epoch-level metrics
+        self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True)
+    
+    def on_test_epoch_end(self):
+        # Compute final metrics over the entire test set
+        metrics = {
+            "test/loss": self.test_loss.compute(),
+            "test/accuracy": self.test_accuracy.compute(),
+            "test/precision": self.test_precision.compute(),
+            "test/recall": self.test_recall.compute(),
+            "test/f1": self.test_f1.compute()
+        }
+        
+        # Log the epoch-level metrics
+        self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True)
+        
 
     def configure_optimizers(self):
         """
@@ -189,8 +202,6 @@ class BaseCNN(pl.LightningModule):
         probs = torch.nn.functional.sigmoid(logits)
 
         return probs.round()
-
-
 class AlexNetBinary(nn.Module):
     """
     AlexNet default:

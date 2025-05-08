@@ -121,7 +121,7 @@ class Datamodule(pl.LightningDataModule):
             self.test_ds,
             batch_size=self.config.batch_size,
             num_workers=self.num_workers,
-            shuffle=False,
+            shuffle=True,
             pin_memory=True,
             persistent_workers=True if self.num_workers > 0 else False,
         )

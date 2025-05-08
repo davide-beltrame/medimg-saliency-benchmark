@@ -3,6 +3,7 @@ Test all the models saved in /checkpoints/ on the test set.
 """
 import json
 import os
+import argparse
 
 import lightning as pl
 from models import BaseCNN
@@ -12,8 +13,13 @@ from utils import BaseConfig
 # Create dir to store
 os.makedirs("evaluation", exist_ok=True)
 
+# read args
+parser = argparse.ArgumentParser()
+parser.add_argument("path_to_config", type=str, help="path/to/config.json")
+args = parser.parse_args()
+
 # Load default config
-config = BaseConfig("./config.json")
+config = BaseConfig(args.path_to_config)
 
 # Datamodule (with test logic implemented)
 dm = Datamodule(config=config)

@@ -37,6 +37,31 @@ Finally, we study correlation between model performance and alignment metrics.
 - Image input size = 224x224 (downsample test and train)
 
 ## Usage
+Specify in the `config.json` the hyper-parameters for training:
+```json
+{
+    "model": "an",          // AlexNet (an), VGG16 (vgg), InceptionNetV1 (in), Resnet101 (rn)
+    "pretrained": false,    // Whether to load default weights
+    "linear": false,        // Whether to override the original classifier and make it GAP + FC (does not work for rs and in, which are alredy GAP + FC)
+    "batch_size": 32,       // train / val / test batch size
+    "epochs": 1,            // number of training epochs
+    "max_lr": 0.001,        // max lr in the OneCycle lr schedule
+    "pct_start": 0.1,       // percentage of total steps for lr warmup
+    "wandb":false           // log to WandB
+}
+```
+
+Train a model on `data/train/`:
+
+```
+$ python train.py path/to/config.json
+```
+
+Test all the models the `checkpoints/` directory (config is required only for batch size):
+
+```
+$ python test.py path/to/config.json
+```
 
 ### 1. Installation
 Install the necessary Python packages using `pip`:
