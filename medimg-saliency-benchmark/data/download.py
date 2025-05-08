@@ -2,7 +2,6 @@
 import kagglehub
 import os
 import logging
-import zipfile
 import shutil
 
 # Configure logging
