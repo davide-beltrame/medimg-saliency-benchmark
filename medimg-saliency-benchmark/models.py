@@ -140,9 +140,8 @@ class BaseCNN(pl.LightningModule):
 
         # The 1cycle policy (warm-up + annealing)
         scheduler = OneCycleLR(
-            optimizer,
-            epochs=self.config.epochs,
-            steps_per_epoch=self.trainer.estimated_stepping_batches,
+            optimizer=optimizer,
+            total_steps=self.trainer.estimated_stepping_batches,
             max_lr=self.config.max_lr,
             pct_start=self.config.pct_start,  # Warm-up percentage of total steps
         )
