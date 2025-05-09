@@ -300,3 +300,45 @@ def create_consensus_mask(individual_masks, filter_type='open', filter_kernel_si
     return consensus
 
 
+def calculate_iou(mask1, mask2):
+    """Calculates Intersection over Union (IoU) for two binary masks."""
+    if mask1 is None or mask2 is None: return 0.0
+    if mask1.shape != mask2.shape:
+        raise ValueError("Masks must have the same shape for IoU calculation.")
+    mask1 = mask1.astype(bool)
+    mask2 = mask2.astype(bool)
+    intersection = np.logical_and(mask1, mask2).sum()
+    union = np.logical_or(mask1, mask2).sum()
+    return intersection / union if union > 0 else 0.0
+
+
+def pointing_game(saliency_map, expert_mask, threshold_saliency=None):
+    """
+    Performs the Pointing Game evaluation.
+    Checks if the pixel with the maximum value in the saliency map
+    falls within the expert-annotated region (binarized).
+
+    saliency_map: 2D numpy array (float, 0-1).
+    expert_mask: 2D numpy array (binary, 0 or 1).
+    threshold_saliency: Optional. If provided, binarizes saliency_map first.
+                        Usually, Pointing Game uses the raw max point.
+    Returns: 1 if the max saliency point is in the expert mask, 0 otherwise.
+    """
+    if saliency_map is None or expert_mask is None: return 0.0
+    if saliency_map.shape != expert_mask.shape:
+        # Attempt to resize saliency_map to expert_mask shape if they differ
+        # This can happen if GradCAM output size is slightly different
+        saliency_map = cv2.resize(saliency_map, (expert_mask.shape[1], expert_mask.shape[0]), interpolation=cv2.INTER_LINEAR)
+
+    if threshold_saliency is not None:
+        saliency_map = (saliency_map >= threshold_saliency).astype(np.uint8)
+
+    # Find the coordinates of the maximum value in the saliency map
+    # If multiple maxima, np.unravel_index gives the first one.
+    max_coords = np.unravel_index(np.argmax(saliency_map), saliency_map.shape)
+
+    # Check if this point is within the expert mask (where expert_mask == 1)
+    if expert_mask[max_coords] == 1:
+        return 1.0
+    else:
+        return 0.0
