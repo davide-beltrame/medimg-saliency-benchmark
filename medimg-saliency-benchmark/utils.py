@@ -174,3 +174,66 @@ def load_mask(mask_path, target_size=(224, 224)):
         return None
     
 
+def find_individual_masks(image_filename_stem, annotations_dir):
+    """
+    Finds all individual expert masks for a given image stem.
+
+    (REQUIRES RENAMING MASKS) Assumes masks are named like: [image_stem]_expert[ID]_mask.png or [image_stem]_mask_expert[ID].png
+    or simply [image_stem]_mask.png if each expert's annotations are in their own subfolder of annotations_dir.
+
+    For simplicity, let's assume a common pattern: annotations_dir contains masks
+    named `[image_filename_stem]_ANYTHING_mask.png` or `[image_filename_stem]_mask_ANYTHING.png`.
+    A more robust solution would be to know the exact naming convention.
+
+    If your naming is simply `[image_filename_stem]_mask.png` but in different expert subdirectories:
+    e.g., annotations_dir/expert1/[image_filename_stem]_mask.png
+          annotations_dir/expert2/[image_filename_stem]_mask.png
+    This function would need to be adapted to walk through subdirectories.
+
+    Current assumption: All relevant masks for an image are in `annotations_dir`
+    and can be identified by `image_filename_stem` and `_mask.png` suffix, possibly with expert identifiers in between.
+    Example: `person1_bacteria_1_expertA_mask.png`, `person1_bacteria_1_expertB_mask.png`
+    """
+    mask_paths = []
+    # Adjusted glob pattern: accounts for variations like imagename_expertID_mask.png or imagename_sometag_mask.png
+    # It will find files starting with image_filename_stem, containing "_mask" and ending with ".png"
+    # To be more specific, you might use:
+    # search_pattern = os.path.join(annotations_dir, f"{image_filename_stem}_*_mask.png")
+    # For now, a bit more general if only one _mask.png exists per expert for that image_filename_stem
+    search_pattern_exact = os.path.join(annotations_dir, f"{image_filename_stem}_mask.png") # if only one per image
+    
+    # This pattern will find imagename_expert1_mask.png, imagename_expert2_mask.png etc.
+    search_pattern_glob = os.path.join(annotations_dir, f"{image_filename_stem}*mask.png")
+
+    # Check if multiple expert folders exist within annotations_dir
+    potential_expert_dirs = [d for d in os.listdir(annotations_dir) if os.path.isdir(os.path.join(annotations_dir, d))]
+    if potential_expert_dirs:
+        for expert_dir in potential_expert_dirs:
+            # Assumes mask name is image_filename_stem + "_mask.png" inside expert folder
+            mask_file = os.path.join(annotations_dir, expert_dir, f"{image_filename_stem}_mask.png")
+            if os.path.exists(mask_file):
+                mask_paths.append(mask_file)
+    
+    if not mask_paths: # If no expert subdirectories or masks not found there
+        # Fallback to globbing directly in annotations_dir
+        # This pattern is broad: image_filename_stem<anything_including_nothing>mask.png
+        # e.g. image_stem_mask.png, image_stem_expert1_mask.png
+        for path in glob.glob(search_pattern_glob):
+             # Ensure it's truly for this stem and not a longer one, e.g. image_stem_extra_mask.png
+            if os.path.basename(path).startswith(image_filename_stem) and "_mask.png" in os.path.basename(path):
+                 mask_paths.append(path)
+        
+        # If only one mask, it might be `imagename_mask.png`
+        if not mask_paths and os.path.exists(search_pattern_exact):
+            mask_paths.append(search_pattern_exact)
+
+    if not mask_paths:
+        print(f"Warning: No masks found for image stem {image_filename_stem} in {annotations_dir} with pattern {search_pattern_glob} or in subdirs.")
+    
+    loaded_masks = []
+    for path in mask_paths:
+        mask = load_mask(path)
+        if mask is not None:
+            loaded_masks.append(mask)
+    return loaded_masks
+
