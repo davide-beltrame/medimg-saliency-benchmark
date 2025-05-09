@@ -2,21 +2,21 @@
     "batch_size": 32,
     "results": [
         {
-            "test/accuracy_mean": 0.7740569114685059,
-            "test/accuracy_ci_lower": 0.7499799728393555,
-            "test/accuracy_ci_upper": 0.7980769276618958,
-            "test/precision_mean": 0.7381466627120972,
-            "test/precision_ci_lower": 0.7096742391586304,
-            "test/precision_ci_upper": 0.765100359916687,
-            "test/recall_mean": 0.9897750020027161,
-            "test/recall_ci_lower": 0.9820972084999084,
-            "test/recall_ci_upper": 0.9961342811584473,
-            "test/f1_mean": 0.8455672860145569,
-            "test/f1_ci_lower": 0.8262076377868652,
-            "test/f1_ci_upper": 0.8631812930107117,
-            "test/auroc_mean": 0.8634856939315796,
-            "test/auroc_ci_lower": 0.8369389176368713,
-            "test/auroc_ci_upper": 0.8875531554222107
+            "test/accuracy_mean": 0.7216762900352478,
+            "test/accuracy_ci_lower": 0.6891025900840759,
+            "test/accuracy_ci_upper": 0.7564102411270142,
+            "test/precision_mean": 0.6945002675056458,
+            "test/precision_ci_lower": 0.6569589972496033,
+            "test/precision_ci_upper": 0.7322288751602173,
+            "test/recall_mean": 0.9894623756408691,
+            "test/recall_ci_lower": 0.9779301285743713,
+            "test/recall_ci_upper": 0.99751877784729,
+            "test/f1_mean": 0.8159928917884827,
+            "test/f1_ci_lower": 0.7890679836273193,
+            "test/f1_ci_upper": 0.8424420356750488,
+            "test/auroc_mean": 0.8313630223274231,
+            "test/auroc_ci_lower": 0.7920975685119629,
+            "test/auroc_ci_upper": 0.8679777383804321
         }
     ]
 }

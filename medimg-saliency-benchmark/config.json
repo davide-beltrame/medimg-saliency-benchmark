@@ -1,10 +1,11 @@
 {
-    "model": "an",
+    "model": "rn",
     "pretrained": false,
-    "linear": false,
+    "linear": true,
     "batch_size": 32,
     "epochs": 10,
     "max_lr": 0.001,
     "pct_start": 0.1,
-    "wandb":false
+    "wandb":true,
+    "run_name": "rn valid is test"
 }

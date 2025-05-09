@@ -43,6 +43,7 @@ trainer = pl.Trainer(
 
 for path_to_ckpt in os.listdir("./checkpoints"):
 
+    print(f"Testing: {path_to_ckpt}")
     # Fix name
     path_to_ckpt = os.path.join("./checkpoints/", path_to_ckpt)
 
@@ -63,3 +64,5 @@ for path_to_ckpt in os.listdir("./checkpoints"):
     )
     with open(f"{path_to_results}", "w") as f:
         json.dump(payload, f, indent=4)
+
+    # break

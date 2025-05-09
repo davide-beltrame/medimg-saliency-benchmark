@@ -12,8 +12,7 @@ from torchmetrics.classification import (
     BinaryAccuracy, 
     BinaryPrecision,
     BinaryRecall,
-    BinaryF1Score,
-    BinaryAUROC
+    BinaryF1Score
 )
 from torch.optim.lr_scheduler import OneCycleLR
 from utils import BaseConfig
@@ -92,19 +91,7 @@ class BaseCNN(pl.LightningModule):
             self.valid_precision(preds, y)
             self.valid_recall(preds, y)
             self.valid_f1(preds, y)
-            
-        # elif stage == "test":
-        #     # For testing, update accumulated metrics
-        #     self.test_loss(loss)
-        #     self.test_accuracy(preds, y)
-        #     self.test_precision(preds, y)
-        #     self.test_recall(preds, y)
-        #     self.test_f1(preds, y)
-        #     self.test_rocauc(logits, y)
-            
-        #     # Log batch pos percentage (just for info)
-        #     self.log("test/batch_pos_perc", y.mean(), on_step=False, on_epoch=True)
-
+        
         return loss
 
     def training_step(self, batch, batch_idx):
@@ -124,15 +111,6 @@ class BaseCNN(pl.LightningModule):
         self.valid_recall = BinaryRecall().to(self.device)
         self.valid_f1 = BinaryF1Score().to(self.device)
     
-    # def on_test_epoch_start(self):
-    #     # Initialize test metrics as requested
-    #     self.test_loss = MeanMetric().to(self.device)
-    #     self.test_accuracy = BinaryAccuracy().to(self.device)
-    #     self.test_precision = BinaryPrecision().to(self.device)
-    #     self.test_recall = BinaryRecall().to(self.device)
-    #     self.test_f1 = BinaryF1Score().to(self.device)
-    #     self.test_rocauc = BinaryAUROC().to(self.device)
-    
     def on_validation_epoch_end(self):
         # Compute final metrics over the entire validation set
         metrics = {
@@ -145,21 +123,6 @@ class BaseCNN(pl.LightningModule):
         
         # Log the epoch-level metrics
         self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True)
-    
-    # def on_test_epoch_end(self):
-    #     # Compute final metrics over the entire test set
-    #     metrics = {
-    #         "test/loss": self.test_loss.compute(),
-    #         "test/accuracy": self.test_accuracy.compute(),
-    #         "test/precision": self.test_precision.compute(),
-    #         "test/recall": self.test_recall.compute(),
-    #         "test/f1": self.test_f1.compute(),
-    #         "test/roc_auc": self.test_rocauc.compute()
-    #     }
-        
-    #     # Log the epoch-level metrics
-    #     self.log_dict(metrics, on_step=False, on_epoch=True, prog_bar=True)
-        
 
     def configure_optimizers(self):
         """

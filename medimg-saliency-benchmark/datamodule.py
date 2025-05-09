@@ -19,9 +19,8 @@ class Dataset(Dataset):
         split:str="train"
     ):  
         
-        assert split in {"train", "test"}
         # Your data
-        assert split in {"train", "test"}
+        assert split in {"train", "test", "val"}
 
         base_path = f"./data/{split}"
         class_dirs = {"NORMAL": 0, "PNEUMONIA": 1}
@@ -82,16 +81,25 @@ class Datamodule(pl.LightningDataModule):
         # Init a dataset
         self.data = Dataset(split="train")
 
-        # Split the dataset
+        # For reproducibility
+        self.generator = torch.Generator().manual_seed(42)
+        
+        # Random split
         self.train_ds, self.val_ds = random_split(
-            self.data, [0.9, 0.1]
+            self.data,
+            [0.9, 0.1],
+            generator=self.generator
         )
 
         # Make the dataset balanced using weighted sampling
         ys = [self.data.targets[idx] for idx in self.train_ds.indices]
         class_weights = {y: 1.0 / count for y, count in Counter(ys).items()}    # measure the weight
         sample_weights = [class_weights[label] for label in ys]     # list of weight for each label
-        self.train_sampler = WeightedRandomSampler(sample_weights, len(sample_weights))
+        self.train_sampler = WeightedRandomSampler(
+            sample_weights,
+            len(sample_weights),
+            generator=self.generator
+        )
        
         # Prepare the test split
         self.test_ds = Dataset(split="test")
@@ -101,7 +109,7 @@ class Datamodule(pl.LightningDataModule):
             self.train_ds,
             batch_size=self.config.batch_size,
             num_workers=self.num_workers,
-            # shuffle=True,
+            # shuffle=True, # cannot be set if sampler
             pin_memory=True,
             persistent_workers=True if self.num_workers > 0 else False,
             sampler=self.train_sampler
@@ -112,7 +120,7 @@ class Datamodule(pl.LightningDataModule):
             self.val_ds,
             batch_size=self.config.batch_size,
             num_workers=self.num_workers,
-            shuffle=False,
+            shuffle=True,
             pin_memory=True,
             persistent_workers=True if self.num_workers > 0 else False,
         )
@@ -125,6 +133,7 @@ class Datamodule(pl.LightningDataModule):
             shuffle=True,
             pin_memory=True,
             persistent_workers=True if self.num_workers > 0 else False,
+            generator=self.generator
         )
     
 
