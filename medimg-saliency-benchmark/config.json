@@ -1,11 +1,11 @@
 {
-    "model": "an",
-    "pretrained": false,
-    "linear": false,
-    "batch_size": 32,
+    "model": "rn",
+    "pretrained": true,
+    "linear": true,
+    "batch_size": 64,
     "epochs": 10,
-    "max_lr": 0.001,
+    "max_lr": 0.0001,
     "pct_start": 0.3,
-    "wandb":false,
+    "wandb":true,
     "run_name": ""
 }

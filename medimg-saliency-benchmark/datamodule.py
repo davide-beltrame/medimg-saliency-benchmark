@@ -38,11 +38,30 @@ class Dataset(Dataset):
         n_pos = sum(self.targets)
         print(f"Init {split} dataset with {n_pos} PNEUMONIA images and {len(self.targets) - n_pos} NORMAL images.")
 
-        # Transormation to apply to the raw image
+        # Transformations to apply to the raw image
         self.transform = transforms.Compose([
+            # Resize to 224x224
             transforms.Resize((224, 224)),
-            transforms.ToTensor()       # also divides by 255
+            # Random affine
+            transforms.RandomAffine(
+                degrees=15,
+                translate=(0.1, 0.1), 
+                scale=(0.90, 1.10), 
+                fill=0  # fill with black
+            ),
+            # Adjust lighting conditions
+            transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),  
+            # Randomly adjust sharpness
+            transforms.RandomAdjustSharpness(sharpness_factor=2, p=0.5),  
+            # also divides by 255
+            transforms.ToTensor(),  
         ])
+        # Only deterministic for testing
+        if split == "test":
+            self.transform = transforms.Compose([
+                transforms.Resize((224, 224)),
+                transforms.ToTensor(),  
+            ])
 
     def __len__(self):
         return len(self.targets)

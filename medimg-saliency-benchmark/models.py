@@ -2,7 +2,7 @@ import lightning as pl
 import torch
 import torch.nn as nn
 from torchvision.models import (
-    resnet101, ResNet101_Weights,
+    resnet50, ResNet50_Weights,
     vgg16, VGG16_Weights,
     googlenet, GoogLeNet_Weights,
     alexnet, AlexNet_Weights
@@ -43,7 +43,7 @@ class BaseCNN(pl.LightningModule):
             self.model = VGG16Binary(pretrained=config.pretrained, linear=config.linear)
         elif config.model == "rn":
             assert config.linear # already GAP + FC, cannot be false
-            self.model = ResNet101Binary(pretrained=config.pretrained)  
+            self.model = ResNet50Binary(pretrained=config.pretrained)  
         elif config.model == "in":
             assert config.linear # already GAP + FC, cannot be false
             self.model = InceptionNetBinary(pretrained=config.pretrained)
@@ -133,6 +133,8 @@ class BaseCNN(pl.LightningModule):
         optimizer = torch.optim.AdamW(
             params=self.parameters(),
             lr=0.001,  #  Reset to max_lr / div_factor by the OneCyleLR
+            betas=[0.9,0.95],
+            weight_decay=1e-4
         )
 
         # The 1cycle policy (warm-up + annealing)
@@ -244,7 +246,7 @@ class VGG16Binary(nn.Module):
         return x
 
 
-class ResNet101Binary(nn.Module):
+class ResNet50Binary(nn.Module):
     """
     ResNet101 default:
     Conv
@@ -259,8 +261,8 @@ class ResNet101Binary(nn.Module):
         super().__init__()
         
         # Load arch
-        weights = ResNet101_Weights.DEFAULT if pretrained else None
-        self.model = resnet101(weights=weights)
+        weights = ResNet50_Weights.DEFAULT if pretrained else None
+        self.model = resnet50(weights=weights)
 
         # Adapt for binary classification
         self.model.fc = nn.Linear(self.model.fc.in_features, 1)

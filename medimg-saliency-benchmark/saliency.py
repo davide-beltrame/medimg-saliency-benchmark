@@ -9,7 +9,7 @@ import cv2
 from models import (
     AlexNetBinary,
     VGG16Binary,
-    ResNet101Binary,
+    ResNet50Binary,
     InceptionNetBinary
 )
 class CAM:
@@ -36,7 +36,7 @@ class CAM:
         elif isinstance(model, VGG16Binary):
             target_layer = self.model.features[28] 
             self.weights = self.model.classifier.weight
-        elif isinstance(model, ResNet101Binary):
+        elif isinstance(model, ResNet50Binary):
             target_layer = self.model.model.layer4[-1].conv3 
             self.weights = self.model.model.fc.weight
         elif isinstance(model, InceptionNetBinary):
@@ -104,7 +104,6 @@ class GradCAM:
             # use .detach() to avoid memory leaks
             # https://github.com/pytorch/pytorch/issues/12863
             # grad_output is a tuple of 1 tensor
-            print("gradients hooked: ", grad_output[0].shape)
             # [B, C, H, W]
             self.gradients = grad_output[0].detach().clone()    
 
@@ -114,14 +113,13 @@ class GradCAM:
         # It should have the following signature:
         # hook(module, input, output) -> None or modified output
         def forward_hook(module, input, output):
-            print("activations hooked: ", output.shape)
             # [B, C, H, W]
             self.activations = output.clone()
 
         # Register hooks on the last conv layer
         if isinstance(model, AlexNetBinary) or isinstance(model, VGG16Binary):
             target_layer = self.model.features[-1]  # Last convolution layer
-        elif isinstance(model, ResNet101Binary):
+        elif isinstance(model, ResNet50Binary):
             target_layer = self.model.model.layer4[-1].conv3 
         elif isinstance(model, InceptionNetBinary):
             target_layer = self.model.model.inception5b
@@ -201,7 +199,7 @@ class RISE:
         
         # Prepare the output tensor for the saliency map
         map = np.zeros((H, W))
-        
+
         # Generate random binary masks and aggregate
         for _ in range(self.num_masks):
             
@@ -222,8 +220,8 @@ class RISE:
             )
             
             # Apply the mask to the input image
-            masked_input = input_tensor * mask
-
+            masked_input = input_tensor * torch.tensor(mask, device=input_tensor.device)
+            
             # Forward pass through the model
             output = self.model(masked_input)
             
@@ -243,4 +241,4 @@ class RISE:
         # Normalize the saliency map to [0, 1]
         map = (map - map.min()) / (map.max() - map.min() + 1e-8)
         
-        return mask
+        return map

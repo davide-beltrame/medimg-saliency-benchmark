@@ -50,8 +50,8 @@ def main():
     # Early stopping
     early_stopping = EarlyStopping(
         monitor="valid/loss",  # Monitor validation cross-entropy loss
-        patience=5,  # Number of validation checks with no improvement after which training will stop
-        min_delta=0.001,  # Minimum change in monitored value to qualify as improvement
+        patience=3,  # Number of validation checks with no improvement after which training will stop
+        min_delta=0.01,  # Minimum change in monitored value to qualify as improvement
         mode="min",  # We want to minimize the loss
         verbose=True,  # Print message when early stopping is triggered
         check_on_train_epoch_end=False,  # Check at validation time, not training end
@@ -68,6 +68,8 @@ def main():
         callbacks=[checkpointer, early_stopping],
         enable_progress_bar=True,
         val_check_interval=1.0,
+        gradient_clip_val=0.5,
+        gradient_clip_algorithm="norm"
     )
 
     # Train
