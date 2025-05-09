@@ -9,6 +9,10 @@ from torchmetrics.classification import (
     BinaryF1Score, 
     AUROC
 )
+import cv2 
+from PIL import Image
+import os 
+import glob 
 
 class BaseConfig:
     """
@@ -236,4 +240,63 @@ def find_individual_masks(image_filename_stem, annotations_dir):
         if mask is not None:
             loaded_masks.append(mask)
     return loaded_masks
+
+
+def apply_morphological_filter(mask, operation='open', kernel_size=3):
+    """
+    Applies morphological filtering to a binary mask.
+    mask: input binary mask (numpy array HxW, values 0 or 1).
+    operation: 'open' (erosion then dilation) or 'close' (dilation then erosion).
+    kernel_size: size of the structuring element.
+    """
+    if not isinstance(mask, np.ndarray) or mask.ndim != 2:
+        print("Warning: Invalid mask for morphological filter, skipping.")
+        return mask
+
+    kernel = np.ones((kernel_size, kernel_size), np.uint8)
+    if operation == 'open':
+        return cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_OPEN, kernel)
+    elif operation == 'close':
+        return cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, kernel)
+    else:
+        print(f"Warning: Unknown morphological operation '{operation}'. Returning original mask.")
+        return mask
+    
+
+def create_consensus_mask(individual_masks, filter_type='open', filter_kernel_size=3, consensus_method='intersection'):
+    """
+    Creates a consensus mask from a list of individual binary masks.
+    individual_masks: A list of 2D numpy arrays (binary masks).
+    filter_type: 'open', 'close', or None. Applied to each mask before consensus.
+    filter_kernel_size: Kernel size for morphological filter.
+    consensus_method: 'intersection' or 'union'.
+    """
+    if not individual_masks:
+        return None
+
+    processed_masks = []
+    for mask in individual_masks:
+        if filter_type:
+            mask_filtered = apply_morphological_filter(mask, operation=filter_type, kernel_size=filter_kernel_size)
+            processed_masks.append(mask_filtered)
+        else:
+            processed_masks.append(mask)
+    
+    if not processed_masks:
+        return None
+
+    if consensus_method == 'intersection':
+        # Start with the first mask, then intersect with the rest
+        consensus = processed_masks[0].copy()
+        for i in range(1, len(processed_masks)):
+            consensus = np.logical_and(consensus, processed_masks[i]).astype(np.uint8)
+    elif consensus_method == 'union':
+        consensus = processed_masks[0].copy()
+        for i in range(1, len(processed_masks)):
+            consensus = np.logical_or(consensus, processed_masks[i]).astype(np.uint8)
+    else:
+        raise ValueError(f"Unknown consensus_method: {consensus_method}")
+
+    return consensus
+
 
