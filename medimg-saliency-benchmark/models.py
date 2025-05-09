@@ -243,6 +243,7 @@ class VGG16Binary(nn.Module):
             x = self.model(x)
         return x
 
+
 class ResNet101Binary(nn.Module):
     """
     ResNet101 default:
@@ -266,6 +267,7 @@ class ResNet101Binary(nn.Module):
     
     def forward(self, x):
         return self.model(x)
+    
 
 class InceptionNetBinary(nn.Module):
     """

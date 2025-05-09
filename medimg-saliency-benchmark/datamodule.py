@@ -135,5 +135,3 @@ class Datamodule(pl.LightningDataModule):
             persistent_workers=True if self.num_workers > 0 else False,
             generator=self.generator
         )
-    
-
