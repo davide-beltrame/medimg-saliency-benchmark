@@ -6,10 +6,10 @@ with open("config.json", "r") as f:
     config = json.load(f)
 
 # Make sure to log
-config["wandb"] = True
+config["wandb"] = False
 
 # Generate new configs and run test
-for model in ["in", "vgg", "rn", "an"]:
+for model in ["an", "vgg", "rn", "in"]:
     for linear in [True, False]:
         for pretrained in [True, False]:
             

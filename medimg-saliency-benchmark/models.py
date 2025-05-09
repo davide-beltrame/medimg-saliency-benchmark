@@ -182,28 +182,29 @@ class AlexNetBinary(nn.Module):
     """
     def __init__(self, pretrained=True, linear=True):
         super().__init__()
+        
+        # Load arch
         weights = AlexNet_Weights.DEFAULT if pretrained else None
-        self.model = alexnet(weights=weights)
+        model = alexnet(weights=weights)
         self.linear = linear
         
+        # Backbone
+        self.features = model.features  # [B, 256, H, W]
+        
+        # Classifier
         if self.linear:
-            # Extract features (remove classifier)
-            self.features = self.model.features  # [B, 256, H, W]
             self.gap = nn.AdaptiveAvgPool2d((1, 1))
             self.classifier = nn.Linear(256, 1)  # AlexNet has 256 features at the last convolutional layer
         else:
-            # Modify original classifier for binary output
-            num_ftrs = self.model.classifier[-1].in_features
-            self.model.classifier[-1] = nn.Linear(num_ftrs, 1)
+            self.gap = model.avgpool
+            self.classifier = model.classifier
+            self.classifier[-1] = nn.Linear(model.classifier[-1].in_features, 1)
     
     def forward(self, x):
-        if self.linear:
-            x = self.features(x)
-            x = self.gap(x)
-            x = torch.flatten(x, 1)
-            x = self.classifier(x)
-        else:
-            x = self.model(x)
+        x = self.features(x)
+        x = self.gap(x)
+        x = torch.flatten(x, 1)
+        x = self.classifier(x)
         return x
 
 
@@ -218,29 +219,28 @@ class VGG16Binary(nn.Module):
     """
     def __init__(self, pretrained=True, linear=True):
         super().__init__()
-        # Updated to use weights parameter instead of pretrained
+        
+        # Load arch
         weights = VGG16_Weights.DEFAULT if pretrained else None
-        self.model = vgg16(weights=weights)
-        self.linear = linear
+        model = vgg16(weights=weights)
+        
+        # Backbone
+        self.features = model.features  # [B, 512, H, W]
 
-        if self.linear:
-            # Extract features (remove classifier)
-            self.features = self.model.features  # [B, 512, H, W]
+        # Classifier
+        if linear:
             self.gap = nn.AdaptiveAvgPool2d((1, 1))
             self.classifier = nn.Linear(512, 1)
         else:
-            # Modify original classifier for binary output
-            num_ftrs = self.model.classifier[-1].in_features
-            self.model.classifier[-1] = nn.Linear(num_ftrs, 1)
+            self.classifier = model.classifier
+            self.gap = model.avgpool
+            self.classifier[-1] = nn.Linear(model.classifier[-1].in_features, 1)
     
     def forward(self, x):
-        if self.linear:
-            x = self.features(x)
-            x = self.gap(x)
-            x = torch.flatten(x, 1)
-            x = self.classifier(x)
-        else:
-            x = self.model(x)
+        x = self.features(x)
+        x = self.gap(x)
+        x = torch.flatten(x, 1)
+        x = self.classifier(x)
         return x
 
 class ResNet101Binary(nn.Module):
@@ -256,13 +256,13 @@ class ResNet101Binary(nn.Module):
     """
     def __init__(self, pretrained=True):
         super().__init__()
-        # Updated to use weights parameter instead of pretrained
+        
+        # Load arch
         weights = ResNet101_Weights.DEFAULT if pretrained else None
         self.model = resnet101(weights=weights)
 
-        # Keep original structure but adapt final layer for binary
-        num_ftrs = self.model.fc.in_features
-        self.model.fc = nn.Linear(num_ftrs, 1)
+        # Adapt for binary classification
+        self.model.fc = nn.Linear(self.model.fc.in_features, 1)
     
     def forward(self, x):
         return self.model(x)
@@ -274,20 +274,19 @@ class InceptionNetBinary(nn.Module):
     + 9xInceptionBlock
     + AvgPool
     + FC
+
+    Unfortunately, GoogleNet implementation does not allow to get intermediate features.
     """
     def __init__(self, pretrained=True):
         super().__init__()
-        # Updated to use weights parameter instead of pretrained
+        
+        # Load arch
         weights = GoogLeNet_Weights.DEFAULT if pretrained else None
         self.model = googlenet(weights=weights)
+        self.model.aux_logits = False # do not use auxiliary classifier during forward
         
-        # Inception outputs with auxiliary classifier during training
-        # Set this to False to get just the main output when calling forward
-        self.model.aux_logits = False
-
         # Adapt for binary classification
-        num_ftrs = self.model.fc.in_features
-        self.model.fc = nn.Linear(num_ftrs, 1)
+        self.model.fc = nn.Linear(self.model.fc.in_features, 1)
     
     def forward(self, x):
         return self.model(x)
