@@ -6,7 +6,7 @@ with open("config.json", "r") as f:
     config = json.load(f)
 
 # Make sure to log
-config["wandb"] = False
+config["wandb"] = True
 
 # Generate new configs and run test
 for model in ["an", "vgg", "rn", "in"]:

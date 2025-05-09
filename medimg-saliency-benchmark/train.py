@@ -58,7 +58,6 @@ def main():
     )
     # Init the trainer
     trainer = pl.Trainer(
-        max_steps=5,
         max_epochs=config.epochs,
         accelerator="auto",  # recognizes device
         devices="auto",  # how many devices to use
