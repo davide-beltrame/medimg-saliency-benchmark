@@ -148,3 +148,29 @@ class BootstrapTestCallback(Callback):
                   f"({metrics_bootstrap[f'test/{metric_name}_ci_lower']:.4f}, "
                   f"{metrics_bootstrap[f'test/{metric_name}_ci_upper']:.4f})")
         print("================================\n")
+
+        # Clear collected data for next potential test run
+        self.all_preds.clear()
+        self.all_targets.clear()
+
+def load_mask(mask_path, target_size=(224, 224)):
+    """
+    Loads a PNG mask image, converts to grayscale, resizes, and binarizes.
+    White pixels (255) are foreground, black (0) are background.
+    """
+    try:
+        mask = Image.open(mask_path).convert('L')  # Convert to grayscale
+        mask = mask.resize(target_size, Image.NEAREST)
+        mask_np = np.array(mask)
+        # Binarize: threshold at 128 (common for L mode if not purely 0/255)
+        # If you are sure your masks are strictly 0 and 255, this can be more direct.
+        binary_mask = (mask_np > 128).astype(np.uint8) # Foreground is 1, background is 0
+        return binary_mask
+    except FileNotFoundError:
+        print(f"Warning: Mask file not found at {mask_path}")
+        return None
+    except Exception as e:
+        print(f"Warning: Error loading mask {mask_path}: {e}")
+        return None
+    
+
