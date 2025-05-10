@@ -96,19 +96,22 @@ This will download the dataset to the path specified within the script (e.g., `d
 ├── requirements.txt        
 └── medimg-saliency-benchmark/     
     ├── data/                  
-    │   ├── annotations/       
+    │   ├── annotations/   
+    │   │   ├── annotated/   
+    │   │   └── original/     
     │   ├── test/               
     │   ├── train/              
     │   └── val/                
     ├── config.json                
-    ├── datamodule.py          
+    ├── datamodule.py   
+    ├── eval_saliency_agreement.py
     ├── gridsearch.py        
-    ├── main.ipynb              # Main notebook for experiments
+    ├── main.ipynb              
     ├── models.py      
     ├── saliency.py   
     ├── test.py              
     ├── train.py              
-    └── utils.py                # Utility functions
+    └── utils.py               
 ```
 
 ## References (Preliminary)
@@ -124,5 +127,5 @@ This will download the dataset to the path specified within the script (e.g., `d
 
 We would like to thank our annotators:
 
-- **Elena Scaccia**, Policlinico Umberto I, Sapienza University, Rome.
 - **Tommaso Warner Danielli**, Ospedale Sant'Andrea, Sapienza University, Rome.
+- etc.
