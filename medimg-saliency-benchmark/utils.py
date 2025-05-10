@@ -362,38 +362,88 @@ def apply_morphological_filter(mask, operation='open', kernel_size=3):
 def create_consensus_mask(individual_masks, filter_type='open', filter_kernel_size=3, consensus_method='intersection'):
     """
     Creates a consensus mask from a list of individual binary masks.
-    individual_masks: A list of 2D numpy arrays (binary masks).
-    filter_type: 'open', 'close', or None. Applied to each mask before consensus.
-    filter_kernel_size: Kernel size for morphological filter.
-    consensus_method: 'intersection' or 'union'.
+    If consensus_method is 'intersection', an empty mask from any participant
+    (after initial processing via process_circled_annotation) will result in an empty consensus.
+    The 'filter_type' (e.g. 'open') is applied *after* this initial check for intersection.
     """
+    default_empty_shape = (224, 224) # Fallback shape
+
     if not individual_masks:
-        return None
+        return np.zeros(default_empty_shape, dtype=np.uint8)
 
-    processed_masks = []
-    for mask in individual_masks:
-        if filter_type:
-            mask_filtered = apply_morphological_filter(mask, operation=filter_type, kernel_size=filter_kernel_size)
-            processed_masks.append(mask_filtered)
-        else:
-            processed_masks.append(mask)
+    reference_shape = None
+    for m in individual_masks:
+        if m is not None and isinstance(m, np.ndarray):
+            reference_shape = m.shape
+            break
+    if reference_shape is None:
+        reference_shape = default_empty_shape
+
+    # Standardize masks: ensure all are ndarray of reference_shape, None becomes empty
+    # This list will contain a mask for *every* expert, even if it's empty.
+    standardized_masks_for_all_experts = []
+    for m_idx, m in enumerate(individual_masks):
+        if m is None:
+            standardized_masks_for_all_experts.append(np.zeros(reference_shape, dtype=np.uint8))
+        elif isinstance(m, np.ndarray) and m.shape == reference_shape:
+            standardized_masks_for_all_experts.append(m.astype(np.uint8))
+        elif isinstance(m, np.ndarray): # Shape mismatch
+            # print(f"Warning: Mask {m_idx} shape mismatch {m.shape} vs {reference_shape}. Treating as empty.")
+            standardized_masks_for_all_experts.append(np.zeros(reference_shape, dtype=np.uint8))
+        else: # Not an ndarray
+            standardized_masks_for_all_experts.append(np.zeros(reference_shape, dtype=np.uint8))
     
-    if not processed_masks:
-        return None
+    if not standardized_masks_for_all_experts: # Should be caught by initial check
+        return np.zeros(reference_shape, dtype=np.uint8)
 
+    # --- Crucial logic for intersection: if any expert's standardized mask is empty, intersection is empty ---
     if consensus_method == 'intersection':
-        # Start with the first mask, then intersect with the rest
-        consensus = processed_masks[0].copy()
-        for i in range(1, len(processed_masks)):
-            consensus = np.logical_and(consensus, processed_masks[i]).astype(np.uint8)
+        for i, m_expert in enumerate(standardized_masks_for_all_experts):
+            if m_expert.sum() == 0:
+                # print(f"Debug: Expert mask {i} is empty. Intersection result will be empty.")
+                return np.zeros(reference_shape, dtype=np.uint8)
+
+    # Apply the morphological filter (e.g., 'open') to each (now guaranteed non-empty for intersection) standardized mask
+    # For UNION, empty masks will just be OR'd with others.
+    masks_after_internal_filter = []
+    if filter_type and filter_kernel_size > 0:
+        for m_expert in standardized_masks_for_all_experts:
+            # Only apply filter if mask has content, or if it's union (where filter might still be desired on non-empty ones)
+            if m_expert.sum() > 0 or consensus_method == 'union':
+                filtered_m = apply_morphological_filter(m_expert, operation=filter_type, kernel_size=filter_kernel_size)
+                masks_after_internal_filter.append(filtered_m if filtered_m is not None else np.zeros(reference_shape, dtype=np.uint8))
+            else: # For intersection, this path shouldn't be hit if an empty mask was found above. For others, carry empty.
+                masks_after_internal_filter.append(m_expert.copy())
+    else: 
+        masks_after_internal_filter = [m.copy() for m in standardized_masks_for_all_experts]
+
+    # --- Second check for intersection: if filter_type made a mask empty ---
+    # This is important because the 'open' operation can remove small regions entirely.
+    if consensus_method == 'intersection':
+        for i, m_filtered in enumerate(masks_after_internal_filter):
+            if m_filtered.sum() == 0:
+                # print(f"Debug: Mask {i} became empty after filter '{filter_type}'. Intersection result will be empty.")
+                return np.zeros(reference_shape, dtype=np.uint8)
+    
+    if not masks_after_internal_filter: # Should not happen
+         return np.zeros(reference_shape, dtype=np.uint8)
+    
+    # --- Perform Consensus ---
+    if consensus_method == 'intersection':
+        # At this point, for intersection, all masks in masks_after_internal_filter are non-empty.
+        consensus_result = masks_after_internal_filter[0].copy()
+        for i in range(1, len(masks_after_internal_filter)):
+            consensus_result = np.logical_and(consensus_result, masks_after_internal_filter[i]).astype(np.uint8)
     elif consensus_method == 'union':
-        consensus = processed_masks[0].copy()
-        for i in range(1, len(processed_masks)):
-            consensus = np.logical_or(consensus, processed_masks[i]).astype(np.uint8)
+        # Start with an empty mask for union to correctly accumulate all positive pixels
+        consensus_result = np.zeros(reference_shape, dtype=np.uint8)
+        for m_filtered in masks_after_internal_filter:
+            if m_filtered is not None: # Ensure m_filtered is not None before logical_or
+                 consensus_result = np.logical_or(consensus_result, m_filtered).astype(np.uint8)
     else:
         raise ValueError(f"Unknown consensus_method: {consensus_method}")
-
-    return consensus
+        
+    return consensus_result
 
 
 def overlay_binary_mask(background_img_pil, mask_np, mask_color=(255, 0, 0), alpha=0.5):
