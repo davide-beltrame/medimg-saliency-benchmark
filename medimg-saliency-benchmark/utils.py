@@ -7,7 +7,8 @@ from torchmetrics.classification import (
     BinaryPrecision, 
     BinaryRecall, 
     BinaryF1Score, 
-    AUROC
+    BinaryAUROC,
+    BinarySpecificity
 )
 import cv2 
 from PIL import Image
@@ -49,7 +50,7 @@ class BootstrapTestCallback(Callback):
         self.n_bootstrap_samples = n_bootstrap_samples
         self.confidence_level = confidence_level
         self.seed = seed
-        self.all_preds = []
+        self.all_logits = []
         self.all_targets = []
         
         # Initialize torchmetrics for bootstrapping
@@ -58,11 +59,12 @@ class BootstrapTestCallback(Callback):
     def init_metrics(self):
         """Initialize all metrics for a bootstrap sample"""
         self.metrics = {
-            "accuracy": BinaryAccuracy(),
-            "precision": BinaryPrecision(),
-            "recall": BinaryRecall(),
-            "f1": BinaryF1Score(),
-            "auroc": AUROC(task="binary")
+            "accuracy": BinaryAccuracy(),       # (TP + TN) / (TP+FP + TN+FN)
+            "precision": BinaryPrecision(),     # TP / (TP + FP)    -> how many positive are correctly identified
+            "recall": BinaryRecall(),           # TP / (TP + FN)    -> how many positive I am missing
+            "f1": BinaryF1Score(),              # (2 * precision * recall) / (precision + recall)
+            "auroc": BinaryAUROC(),             
+            "specificity": BinarySpecificity()  # TN / (TN + FP)    -> detect if prdicting al positives
         }
         
     def reset_metrics(self):
@@ -75,34 +77,31 @@ class BootstrapTestCallback(Callback):
         X, y = batch
         with torch.no_grad():
             # Get logits and convert to probabilities
-            logits = pl_module(X)
-            preds = torch.nn.functional.sigmoid(logits).view(-1)
+            logits = pl_module(X).view(-1)
+            # preds = torch.nn.functional.sigmoid(logits).view(-1)
             
             # Store predictions and targets
-            self.all_preds.extend(preds.cpu().numpy())
+            self.all_logits.extend(logits.cpu().numpy())
             self.all_targets.extend(y.cpu().numpy())
     
     def on_test_epoch_end(self, trainer, pl_module):
         """Calculate bootstrapped statistics at the end of testing"""
         # Convert to numpy arrays for easier processing
-        preds = np.array(self.all_preds)
+        logits = np.array(self.all_logits)
         targets = np.array(self.all_targets)
-        
+
         # Set random seed for reproducibility
         torch.manual_seed(self.seed)
         np.random.seed(self.seed)
         
         # Initialize dictionaries to store bootstrap results
         bootstrap_results = {
-            "accuracy": np.zeros(self.n_bootstrap_samples),
-            "precision": np.zeros(self.n_bootstrap_samples),
-            "recall": np.zeros(self.n_bootstrap_samples),
-            "f1": np.zeros(self.n_bootstrap_samples),
-            "auroc": np.zeros(self.n_bootstrap_samples)
+            k:np.zeros(self.n_bootstrap_samples) 
+            for k,_ in self.metrics.items()
         }
-        
+
         # Sample size equals original dataset size
-        n_samples = len(preds)
+        n_samples = len(logits)
         
         # Generate bootstrap samples and calculate metrics
         for i in range(self.n_bootstrap_samples):
@@ -113,23 +112,18 @@ class BootstrapTestCallback(Callback):
             indices = np.random.choice(n_samples, n_samples, replace=True)
             
             # Get bootstrap predictions and targets
-            bootstrap_preds = torch.tensor(preds[indices])
+            bootstrap_logits = torch.tensor(logits[indices]).to(torch.float32)
             bootstrap_targets = torch.tensor(targets[indices]).long()
             
             # Calculate metrics using torchmetrics
             try:
                 for name, metric in self.metrics.items():
-                    # Different handling for AUROC which needs probabilities
-                    if name == "auroc":
-                        bootstrap_results[name][i] = metric(bootstrap_preds, bootstrap_targets).item()
-                    else:
-                        # Other metrics use binary predictions
-                        binary_preds = (bootstrap_preds >= 0.5).int()
-                        bootstrap_results[name][i] = metric(binary_preds, bootstrap_targets).item()
+                    # All metrics handle automatic sigmoid if logits
+                    bootstrap_results[name][i] = metric(bootstrap_logits, bootstrap_targets).item()
             except Exception as e:
                 print(f"Metrics calculation failed for bootstrap sample {i}: {e}")
                 # Keep the default 0 value for this iteration
-        
+
         # Calculate confidence intervals
         alpha = 1 - self.confidence_level
         lower_percentile = alpha / 2 * 100
@@ -154,7 +148,7 @@ class BootstrapTestCallback(Callback):
         print("================================\n")
 
         # Clear collected data for next potential test run
-        self.all_preds.clear()
+        self.all_logits.clear()
         self.all_targets.clear()
 
 def load_mask(mask_path, target_size=(224, 224)):

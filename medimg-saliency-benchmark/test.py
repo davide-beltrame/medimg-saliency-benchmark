@@ -43,8 +43,10 @@ trainer = pl.Trainer(
 
 for path_to_ckpt in os.listdir("./checkpoints"):
 
+    # Info
     print(f"Testing: {path_to_ckpt}")
-    # Fix name
+
+    # Get path
     path_to_ckpt = os.path.join("./checkpoints/", path_to_ckpt)
 
     # Load trained model

@@ -1,0 +1,25 @@
+{
+    "batch_size": 64,
+    "results": [
+        {
+            "test/accuracy_mean": 0.8792227506637573,
+            "test/accuracy_ci_lower": 0.8525640964508057,
+            "test/accuracy_ci_upper": 0.9022836685180664,
+            "test/precision_mean": 0.8425082564353943,
+            "test/precision_ci_lower": 0.8099299669265747,
+            "test/precision_ci_upper": 0.8747172355651855,
+            "test/recall_mean": 0.9920926690101624,
+            "test/recall_ci_lower": 0.9827543497085571,
+            "test/recall_ci_upper": 1.0,
+            "test/f1_mean": 0.9111120104789734,
+            "test/f1_ci_lower": 0.8910861611366272,
+            "test/f1_ci_upper": 0.929813802242279,
+            "test/auroc_mean": 0.9656473398208618,
+            "test/auroc_ci_lower": 0.9516756534576416,
+            "test/auroc_ci_upper": 0.9777083992958069,
+            "test/specificity_mean": 0.6914434432983398,
+            "test/specificity_ci_lower": 0.6363434195518494,
+            "test/specificity_ci_upper": 0.7477496862411499
+        }
+    ]
+}

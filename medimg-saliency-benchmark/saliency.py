@@ -25,7 +25,6 @@ class CAM:
 
         # Hook to capture activations
         def forward_hook(module, input, output):
-            print("activations hooked: ", output.shape)
             # [B, C, H, W]
             self.activations = output.clone()
 
