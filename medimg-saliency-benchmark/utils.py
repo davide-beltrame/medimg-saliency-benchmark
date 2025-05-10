@@ -178,6 +178,134 @@ def load_mask(mask_path, target_size=(224, 224)):
         return None
     
 
+def process_circled_annotation(binary_mask_np,
+                               initial_closing_kernel_size=3,
+                               solidity_threshold=0.5,
+                               outline_fill_closing_kernel_size=7, 
+                               outline_erosion_kernel_size=7,    
+                               filled_region_hole_closing_kernel_size=5, 
+                               min_contour_area=20):
+    """
+    Processes a binary mask that might contain outlines or already filled regions.
+    Iterates over all significant contours in the mask.
+    - If a contour is an outline (based on solidity), it attempts to close gaps, fill it, 
+      and then erode the boundary.
+    - If a contour is a filled region, it attempts to close internal holes.
+    Results from all processed contours are combined.
+
+    Args:
+        binary_mask_np (np.ndarray): Input binary mask (HxW, values 0 or 1).
+        initial_closing_kernel_size (int): Kernel size for an initial morphological closing 
+                                           to pre-process the mask (e.g., connect tiny breaks).
+        solidity_threshold (float): Ratio of contour area to convex hull area. Contours with
+                                    solidity below this are treated as outlines.
+        outline_fill_closing_kernel_size (int): Kernel size for closing larger gaps in detected outlines
+                                                before attempting to fill them.
+        outline_erosion_kernel_size (int): Kernel size for erosion applied *only* to filled outlines
+                                           to remove the drawn line's thickness.
+        filled_region_hole_closing_kernel_size (int): Kernel size for closing internal holes in
+                                                      regions already identified as filled.
+        min_contour_area (int): Minimum area for a contour to be considered significant.
+
+    Returns:
+        np.ndarray: Processed binary mask, or an empty mask if processing fails.
+    """
+    if binary_mask_np is None:
+        # Return a default empty mask of a standard size if input is None
+        # Assuming target_size is (224,224) as used elsewhere, but this could be a parameter
+        return np.zeros((224,224), dtype=np.uint8) 
+    if binary_mask_np.sum() == 0: # If mask is already empty
+        return binary_mask_np.astype(np.uint8)
+
+    mask_uint8 = binary_mask_np.astype(np.uint8)
+
+    # 1. Initial (small) closing to connect very minor breaks and smooth the input.
+    # This helps in finding more coherent contours.
+    if initial_closing_kernel_size > 0:
+        temp_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (initial_closing_kernel_size, initial_closing_kernel_size))
+        processed_mask_for_contours = cv2.morphologyEx(mask_uint8, cv2.MORPH_CLOSE, temp_kernel)
+    else:
+        processed_mask_for_contours = mask_uint8.copy()
+
+    # 2. Find ALL external contours on this initially processed mask.
+    # cv2.RETR_EXTERNAL retrieves only the extreme outer contours.
+    # cv2.CHAIN_APPROX_SIMPLE compresses segments, leaving only their end points.
+    contours, hierarchy = cv2.findContours(processed_mask_for_contours, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if not contours:
+        return np.zeros_like(binary_mask_np, dtype=np.uint8) # Return empty if no contours
+
+    # Create a final mask to accumulate results from all processed contours
+    final_combined_mask = np.zeros_like(binary_mask_np, dtype=np.uint8)
+
+    # 3. Iterate over ALL found contours
+    for contour in contours:
+        area = cv2.contourArea(contour)
+
+        if area < min_contour_area:
+            continue # Skip small, insignificant contours
+
+        # Create a temporary mask for processing this single contour
+        # This will hold the processed version of the current contour
+        single_contour_processed_mask = np.zeros_like(processed_mask_for_contours, dtype=np.uint8)
+
+        # Calculate Solidity of the current contour
+        # Solidity = Area of Contour / Area of Convex Hull
+        hull = cv2.convexHull(contour)
+        hull_area = cv2.contourArea(hull)
+        solidity = float(area) / hull_area if hull_area > 0 else 0.0
+        
+        # --- Decision based on solidity for the CURRENT contour ---
+        if solidity < solidity_threshold:
+            # --- BRANCH 1: Assumed to be an OUTLINE ---
+            # The goal is to fill this outline and then erode by the line thickness.
+            
+            # a. Create a mask with just the current contour line.
+            #    Then, apply a more aggressive closing to ensure the outline is connected for filling.
+            current_outline_mask = np.zeros_like(processed_mask_for_contours, dtype=np.uint8)
+            cv2.drawContours(current_outline_mask, [contour], -1, 1, thickness=1) # Draw the line of this contour
+
+            if outline_fill_closing_kernel_size > 0:
+                close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (outline_fill_closing_kernel_size, outline_fill_closing_kernel_size))
+                closed_outline_for_filling = cv2.morphologyEx(current_outline_mask, cv2.MORPH_CLOSE, close_kernel)
+            else:
+                closed_outline_for_filling = current_outline_mask # Use as is if no closing
+            
+            # b. Fill this (hopefully now closed) outline.
+            #    Find contours on this specifically prepared mask and fill them.
+            fill_contours_for_this_outline, _ = cv2.findContours(closed_outline_for_filling, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if fill_contours_for_this_outline:
+                # Filter by area again, in case closing created tiny artifacts or multiple small fills
+                # Use a relative threshold based on the original contour's area or a small absolute one
+                min_fill_area = max(min_contour_area / 4.0, area / 10.0) 
+                significant_fill_contours = [fc for fc in fill_contours_for_this_outline if cv2.contourArea(fc) > min_fill_area]
+                if significant_fill_contours:
+                     cv2.drawContours(single_contour_processed_mask, significant_fill_contours, -1, 1, thickness=cv2.FILLED)
+            
+            # c. Erode the filled shape to account for the original line thickness.
+            if outline_erosion_kernel_size > 0 and single_contour_processed_mask.sum() > 0:
+                erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (outline_erosion_kernel_size, outline_erosion_kernel_size))
+                single_contour_processed_mask = cv2.erode(single_contour_processed_mask, erode_kernel, iterations=1)
+            
+        else:
+            # --- BRANCH 2: Assumed to be a FILLED REGION ---
+            # The region is likely already filled. The main task is to ensure any internal holes are closed.
+            # We use the 'contour' found from the 'processed_mask_for_contours'.
+            cv2.drawContours(single_contour_processed_mask, [contour], -1, 1, thickness=cv2.FILLED)
+
+            # b. Apply morphological closing to fill internal holes.
+            if filled_region_hole_closing_kernel_size > 0 and single_contour_processed_mask.sum() > 0:
+                hole_close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (filled_region_hole_closing_kernel_size, filled_region_hole_closing_kernel_size))
+                single_contour_processed_mask = cv2.morphologyEx(single_contour_processed_mask, cv2.MORPH_CLOSE, hole_close_kernel)
+        
+        # Add the processed result of this contour to the final combined mask
+        # This ensures that if multiple regions were drawn, all processed versions are included.
+        if single_contour_processed_mask.sum() > 0:
+            final_combined_mask = np.logical_or(final_combined_mask, single_contour_processed_mask).astype(np.uint8)
+            
+    return final_combined_mask
+    
+
 def get_masks_for_image_from_metadata(image_name_to_find, annotations_metadata, annotated_masks_dir, target_size=(224, 224)):
     """
     Finds and loads all individual expert masks for a given image_name using metadata.
@@ -193,27 +321,21 @@ def get_masks_for_image_from_metadata(image_name_to_find, annotations_metadata, 
               Each mask is a 2D numpy array (H, W) with values 0 or 1.
               Returns an empty list if no masks are found or if errors occur.
     """
-    loaded_masks = []
-    mask_paths_found = [] # To store paths for debugging or info
+    loaded_masks_with_annotators = [] # Stores tuples of (mask_array, annotator_name)
+    mask_paths_found = []
 
     for record in annotations_metadata:
         if record.get("image_name") == image_name_to_find:
             annotation_filename = record.get("annotation_file")
+            annotator_name = record.get("annotator_name", "Unknown Annotator") # Get annotator name
             if annotation_filename:
                 mask_path = os.path.join(annotated_masks_dir, annotation_filename)
                 mask_paths_found.append(mask_path)
                 mask = load_mask(mask_path, target_size=target_size)
                 if mask is not None:
-                    loaded_masks.append(mask)
-            else:
-                print(f"Warning: Record for {image_name_to_find} found but 'annotation_file' is missing or empty.")
-    
-    if not mask_paths_found:
-        print(f"Info: No annotation records found for image_name: {image_name_to_find} in metadata.")
-    elif not loaded_masks and mask_paths_found:
-        print(f"Warning: Found records for {image_name_to_find} but failed to load any masks from paths: {mask_paths_found}")
+                    loaded_masks_with_annotators.append((mask, annotator_name)) # Store tuple
 
-    return loaded_masks
+    return loaded_masks_with_annotators
 
 
 def apply_morphological_filter(mask, operation='open', kernel_size=3):
