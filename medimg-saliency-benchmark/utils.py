@@ -10,7 +10,7 @@ from torchmetrics.classification import (
     AUROC
 )
 import cv2 
-from PIL import Image
+from PIL import Image, ImageDraw
 import os 
 import glob 
 
@@ -178,67 +178,41 @@ def load_mask(mask_path, target_size=(224, 224)):
         return None
     
 
-def find_individual_masks(image_filename_stem, annotations_dir):
+def get_masks_for_image_from_metadata(image_name_to_find, annotations_metadata, annotated_masks_dir, target_size=(224, 224)):
     """
-    Finds all individual expert masks for a given image stem.
+    Finds and loads all individual expert masks for a given image_name using metadata.
+    
+    Args:
+        image_name_to_find (str): The filename of the original image (e.g., "person171_bacteria_826.jpeg").
+        annotations_metadata (list): A list of dictionaries, where each dict is an entry from metadata.json.
+        annotated_masks_dir (str): Path to the directory containing the '.png' mask files (e.g., "data/annotations/annotated/").
+        target_size (tuple): The (width, height) to resize masks to.
 
-    (REQUIRES RENAMING MASKS) Assumes masks are named like: [image_stem]_expert[ID]_mask.png or [image_stem]_mask_expert[ID].png
-    or simply [image_stem]_mask.png if each expert's annotations are in their own subfolder of annotations_dir.
-
-    For simplicity, let's assume a common pattern: annotations_dir contains masks
-    named `[image_filename_stem]_ANYTHING_mask.png` or `[image_filename_stem]_mask_ANYTHING.png`.
-    A more robust solution would be to know the exact naming convention.
-
-    If your naming is simply `[image_filename_stem]_mask.png` but in different expert subdirectories:
-    e.g., annotations_dir/expert1/[image_filename_stem]_mask.png
-          annotations_dir/expert2/[image_filename_stem]_mask.png
-    This function would need to be adapted to walk through subdirectories.
-
-    Current assumption: All relevant masks for an image are in `annotations_dir`
-    and can be identified by `image_filename_stem` and `_mask.png` suffix, possibly with expert identifiers in between.
-    Example: `person1_bacteria_1_expertA_mask.png`, `person1_bacteria_1_expertB_mask.png`
+    Returns:
+        list: A list of loaded binary masks (numpy arrays) for the given image.
+              Each mask is a 2D numpy array (H, W) with values 0 or 1.
+              Returns an empty list if no masks are found or if errors occur.
     """
-    mask_paths = []
-    # Adjusted glob pattern: accounts for variations like imagename_expertID_mask.png or imagename_sometag_mask.png
-    # It will find files starting with image_filename_stem, containing "_mask" and ending with ".png"
-    # To be more specific, you might use:
-    # search_pattern = os.path.join(annotations_dir, f"{image_filename_stem}_*_mask.png")
-    # For now, a bit more general if only one _mask.png exists per expert for that image_filename_stem
-    search_pattern_exact = os.path.join(annotations_dir, f"{image_filename_stem}_mask.png") # if only one per image
-    
-    # This pattern will find imagename_expert1_mask.png, imagename_expert2_mask.png etc.
-    search_pattern_glob = os.path.join(annotations_dir, f"{image_filename_stem}*mask.png")
-
-    # Check if multiple expert folders exist within annotations_dir
-    potential_expert_dirs = [d for d in os.listdir(annotations_dir) if os.path.isdir(os.path.join(annotations_dir, d))]
-    if potential_expert_dirs:
-        for expert_dir in potential_expert_dirs:
-            # Assumes mask name is image_filename_stem + "_mask.png" inside expert folder
-            mask_file = os.path.join(annotations_dir, expert_dir, f"{image_filename_stem}_mask.png")
-            if os.path.exists(mask_file):
-                mask_paths.append(mask_file)
-    
-    if not mask_paths: # If no expert subdirectories or masks not found there
-        # Fallback to globbing directly in annotations_dir
-        # This pattern is broad: image_filename_stem<anything_including_nothing>mask.png
-        # e.g. image_stem_mask.png, image_stem_expert1_mask.png
-        for path in glob.glob(search_pattern_glob):
-             # Ensure it's truly for this stem and not a longer one, e.g. image_stem_extra_mask.png
-            if os.path.basename(path).startswith(image_filename_stem) and "_mask.png" in os.path.basename(path):
-                 mask_paths.append(path)
-        
-        # If only one mask, it might be `imagename_mask.png`
-        if not mask_paths and os.path.exists(search_pattern_exact):
-            mask_paths.append(search_pattern_exact)
-
-    if not mask_paths:
-        print(f"Warning: No masks found for image stem {image_filename_stem} in {annotations_dir} with pattern {search_pattern_glob} or in subdirs.")
-    
     loaded_masks = []
-    for path in mask_paths:
-        mask = load_mask(path)
-        if mask is not None:
-            loaded_masks.append(mask)
+    mask_paths_found = [] # To store paths for debugging or info
+
+    for record in annotations_metadata:
+        if record.get("image_name") == image_name_to_find:
+            annotation_filename = record.get("annotation_file")
+            if annotation_filename:
+                mask_path = os.path.join(annotated_masks_dir, annotation_filename)
+                mask_paths_found.append(mask_path)
+                mask = load_mask(mask_path, target_size=target_size)
+                if mask is not None:
+                    loaded_masks.append(mask)
+            else:
+                print(f"Warning: Record for {image_name_to_find} found but 'annotation_file' is missing or empty.")
+    
+    if not mask_paths_found:
+        print(f"Info: No annotation records found for image_name: {image_name_to_find} in metadata.")
+    elif not loaded_masks and mask_paths_found:
+        print(f"Warning: Found records for {image_name_to_find} but failed to load any masks from paths: {mask_paths_found}")
+
     return loaded_masks
 
 
@@ -298,6 +272,44 @@ def create_consensus_mask(individual_masks, filter_type='open', filter_kernel_si
         raise ValueError(f"Unknown consensus_method: {consensus_method}")
 
     return consensus
+
+
+def overlay_binary_mask(background_img_pil, mask_np, mask_color=(255, 0, 0), alpha=0.5):
+    """
+    Overlays a binary mask on a background PIL image.
+    
+    Args:
+        background_img_pil (PIL.Image): The background image.
+        mask_np (np.ndarray): The binary mask (HxW, values 0 or 1).
+        mask_color (tuple): RGB color for the mask.
+        alpha (float): Transparency of the mask (0.0 fully transparent, 1.0 fully opaque).
+        
+    Returns:
+        PIL.Image: Image with mask overlaid.
+    """
+    if mask_np is None:
+        return background_img_pil
+
+    # Ensure background is RGBA for alpha blending
+    background_img_pil = background_img_pil.convert("RGBA")
+    overlay_img = Image.new("RGBA", background_img_pil.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay_img)
+
+    # Scale mask to background image size if different
+    if mask_np.shape[:2] != (background_img_pil.height, background_img_pil.width):
+        mask_np_resized = cv2.resize(mask_np.astype(np.uint8), (background_img_pil.width, background_img_pil.height), interpolation=cv2.INTER_NEAREST)
+    else:
+        mask_np_resized = mask_np.astype(np.uint8)
+
+    # Create a colored version of the mask
+    for y in range(mask_np_resized.shape[0]):
+        for x in range(mask_np_resized.shape[1]):
+            if mask_np_resized[y, x] == 1: # If mask is active at this pixel
+                draw.point((x, y), fill=(*mask_color, int(alpha * 255)))
+                
+    # Alpha composite the overlay onto the background
+    combined_img = Image.alpha_composite(background_img_pil, overlay_img)
+    return combined_img.convert("RGB") # Convert back to RGB if needed
 
 
 def calculate_iou(mask1, mask2):
