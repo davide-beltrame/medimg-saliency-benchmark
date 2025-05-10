@@ -50,7 +50,7 @@ class BootstrapTestCallback(Callback):
         self.n_bootstrap_samples = n_bootstrap_samples
         self.confidence_level = confidence_level
         self.seed = seed
-        self.all_logits = []
+        self.all_preds = []  # Store probabilities directly instead of logits
         self.all_targets = []
         
         # Initialize torchmetrics for bootstrapping
@@ -59,12 +59,12 @@ class BootstrapTestCallback(Callback):
     def init_metrics(self):
         """Initialize all metrics for a bootstrap sample"""
         self.metrics = {
-            "accuracy": BinaryAccuracy(),       # (TP + TN) / (TP+FP + TN+FN)
-            "precision": BinaryPrecision(),     # TP / (TP + FP)    -> how many positive are correctly identified
-            "recall": BinaryRecall(),           # TP / (TP + FN)    -> how many positive I am missing
-            "f1": BinaryF1Score(),              # (2 * precision * recall) / (precision + recall)
-            "auroc": BinaryAUROC(),             
-            "specificity": BinarySpecificity()  # TN / (TN + FP)    -> detect if prdicting al positives
+            "accuracy": BinaryAccuracy(),
+            "precision": BinaryPrecision(),
+            "recall": BinaryRecall(),
+            "f1": BinaryF1Score(),
+            "auroc": BinaryAUROC(),
+            "specificity": BinarySpecificity()
         }
         
     def reset_metrics(self):
@@ -78,17 +78,24 @@ class BootstrapTestCallback(Callback):
         with torch.no_grad():
             # Get logits and convert to probabilities
             logits = pl_module(X).view(-1)
-            # preds = torch.nn.functional.sigmoid(logits).view(-1)
+            preds = torch.nn.functional.sigmoid(logits).view(-1)
             
             # Store predictions and targets
-            self.all_logits.extend(logits.cpu().numpy())
+            self.all_preds.extend(preds.cpu().numpy())  # Store probabilities
             self.all_targets.extend(y.cpu().numpy())
     
     def on_test_epoch_end(self, trainer, pl_module):
         """Calculate bootstrapped statistics at the end of testing"""
         # Convert to numpy arrays for easier processing
-        logits = np.array(self.all_logits)
+        preds = np.array(self.all_preds)
         targets = np.array(self.all_targets)
+
+        # Print distribution statistics to help diagnose
+        print(f"\nTest set statistics:")
+        print(f"Number of samples: {len(targets)}")
+        print(f"Class distribution: {np.bincount(targets.astype(int))}")
+        print(f"Prediction mean: {np.mean(preds):.4f}, std: {np.std(preds):.4f}")
+        print(f"Prediction range: [{np.min(preds):.4f}, {np.max(preds):.4f}]")
 
         # Set random seed for reproducibility
         torch.manual_seed(self.seed)
@@ -101,7 +108,7 @@ class BootstrapTestCallback(Callback):
         }
 
         # Sample size equals original dataset size
-        n_samples = len(logits)
+        n_samples = len(preds)
         
         # Generate bootstrap samples and calculate metrics
         for i in range(self.n_bootstrap_samples):
@@ -112,14 +119,13 @@ class BootstrapTestCallback(Callback):
             indices = np.random.choice(n_samples, n_samples, replace=True)
             
             # Get bootstrap predictions and targets
-            bootstrap_logits = torch.tensor(logits[indices]).to(torch.float32)
+            bootstrap_preds = torch.tensor(preds[indices]).to(torch.float32)
             bootstrap_targets = torch.tensor(targets[indices]).long()
             
             # Calculate metrics using torchmetrics
             try:
                 for name, metric in self.metrics.items():
-                    # All metrics handle automatic sigmoid if logits
-                    bootstrap_results[name][i] = metric(bootstrap_logits, bootstrap_targets).item()
+                    bootstrap_results[name][i] = metric(bootstrap_preds, bootstrap_targets).item()
             except Exception as e:
                 print(f"Metrics calculation failed for bootstrap sample {i}: {e}")
                 # Keep the default 0 value for this iteration
@@ -129,26 +135,54 @@ class BootstrapTestCallback(Callback):
         lower_percentile = alpha / 2 * 100
         upper_percentile = (1 - alpha / 2) * 100
         
+        # Calculate width of confidence intervals for diagnostics
+        ci_widths = {}
+        
         # Generate log dictionary
         metrics_bootstrap = {}
         for metric_name in bootstrap_results.keys():
-            metrics_bootstrap[f"test/{metric_name}_mean"] = np.mean(bootstrap_results[metric_name])
-            metrics_bootstrap[f"test/{metric_name}_ci_lower"] = np.percentile(bootstrap_results[metric_name], lower_percentile)
-            metrics_bootstrap[f"test/{metric_name}_ci_upper"] = np.percentile(bootstrap_results[metric_name], upper_percentile)
+            mean_val = np.mean(bootstrap_results[metric_name])
+            ci_lower = np.percentile(bootstrap_results[metric_name], lower_percentile)
+            ci_upper = np.percentile(bootstrap_results[metric_name], upper_percentile)
+            
+            metrics_bootstrap[f"test/{metric_name}_mean"] = mean_val
+            metrics_bootstrap[f"test/{metric_name}_ci_lower"] = ci_lower
+            metrics_bootstrap[f"test/{metric_name}_ci_upper"] = ci_upper
+            
+            # Calculate width as percentage points for binary metrics
+            ci_widths[metric_name] = (ci_upper - ci_lower) * 100
         
         # Log the bootstrap metrics
         pl_module.log_dict(metrics_bootstrap, on_step=False, on_epoch=True)
         
-        # Print bootstrap results
+        # Print bootstrap results with additional diagnostics
         print("\n\n===== Bootstrap Test Results =====")
         for metric_name in bootstrap_results.keys():
             print(f"{metric_name.capitalize()}: {metrics_bootstrap[f'test/{metric_name}_mean']:.4f} "
                   f"({metrics_bootstrap[f'test/{metric_name}_ci_lower']:.4f}, "
                   f"{metrics_bootstrap[f'test/{metric_name}_ci_upper']:.4f})")
+            print(f"  - CI width: {ci_widths[metric_name]:.2f} percentage points")
+            print(f"  - Bootstrap samples std: {np.std(bootstrap_results[metric_name]):.4f}")
+        
+        # Analyze distribution of bootstrap results for the problematic metrics
+        # Find metrics with wide CIs
+        wide_ci_metrics = [m for m, w in ci_widths.items() if w > 10.0]
+        if wide_ci_metrics:
+            print("\n===== Analysis of Wide CI Metrics =====")
+            for metric_name in wide_ci_metrics:
+                values = bootstrap_results[metric_name]
+                print(f"{metric_name} distribution:")
+                print(f"  - min: {np.min(values):.4f}, max: {np.max(values):.4f}")
+                print(f"  - 10th percentile: {np.percentile(values, 10):.4f}")
+                print(f"  - 25th percentile: {np.percentile(values, 25):.4f}")
+                print(f"  - median: {np.median(values):.4f}")
+                print(f"  - 75th percentile: {np.percentile(values, 75):.4f}")
+                print(f"  - 90th percentile: {np.percentile(values, 90):.4f}")
+        
         print("================================\n")
 
         # Clear collected data for next potential test run
-        self.all_logits.clear()
+        self.all_preds.clear()
         self.all_targets.clear()
 
 def load_mask(mask_path, target_size=(224, 224)):
