@@ -22,7 +22,7 @@ ORIGINAL_IMAGES_DIR_FOR_SALIENCY = "data/test" # Or wherever the original images
 
 MODEL_INPUT_SIZE = (224, 224) 
 
-SALIENCY_BINARIZATION_THRESHOLD = 0.5
+SALIENCY_BINARIZATION_THRESHOLD = 0.8
 
 INITIAL_PRE_CLOSING_KERNEL_SIZE = 3
 SOLIDITY_THRESHOLD = 0.6            
@@ -95,11 +95,31 @@ def find_checkpoint(model_short_key):
         print(f"Warning: No checkpoint found for model key '{model_short_key}' with pattern '{ckpt_pattern}' in {CHECKPOINT_DIR}")
         return None
 
-def binarize_saliency_map(saliency_map_np, threshold=SALIENCY_BINARIZATION_THRESHOLD):
-    """Binarizes a saliency map."""
+def binarize_saliency_map(saliency_map_np, method="fixed", threshold_value=SALIENCY_BINARIZATION_THRESHOLD):
     if saliency_map_np is None:
         return None
-    return (saliency_map_np >= threshold).astype(np.uint8)
+
+    saliency_map_to_process = saliency_map_np.copy()
+    if saliency_map_to_process.max() == saliency_map_to_process.min(): # Avoid issues with flat maps
+        return np.zeros_like(saliency_map_to_process, dtype=np.uint8)
+
+    # Normalize to 0-255 for Otsu if it's in [0,1]
+    if saliency_map_to_process.max() <= 1.0 and saliency_map_to_process.min() >=0.0:
+         saliency_map_uint8 = np.uint8(255 * saliency_map_to_process)
+    else: # If already potentially 0-255 or other range, ensure it's scaled if needed.
+          # For safety, let's rescale based on its own min/max if not in [0,1]
+         saliency_map_uint8 = np.uint8(255 * (saliency_map_to_process - saliency_map_to_process.min()) / (saliency_map_to_process.max() - saliency_map_to_process.min() + 1e-8))
+
+    if method == "otsu":
+        otsu_threshold, binarized_map = cv2.threshold(
+            saliency_map_uint8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        return (binarized_map / 255).astype(np.uint8)
+    elif method == "fixed":
+        return (saliency_map_np >= threshold_value).astype(np.uint8)
+    else:
+        print(f"Warning: Unknown binarization method '{method}'. Using fixed threshold.")
+        return (saliency_map_np >= threshold_value).astype(np.uint8)
 
 def generate_random_map(size=MODEL_INPUT_SIZE, grid_size=10):
     """Generates a random saliency map as per table description."""
@@ -298,7 +318,7 @@ def main():
                         saliency_map_np = None # Ensure it's None if error
                 
                 if saliency_map_np is not None:
-                    binarized_saliency_map = binarize_saliency_map(saliency_map_np, threshold=SALIENCY_BINARIZATION_THRESHOLD)
+                    binarized_saliency_map = binarize_saliency_map(saliency_map_np, method="fixed") # New
                     if binarized_saliency_map is not None:
                         iou = utils.calculate_iou(binarized_saliency_map, expert_mask_np)
                         ious_for_current_pair.append(iou)
@@ -320,8 +340,8 @@ def main():
     print(pivot_table.to_string(float_format="%.4f"))
 
     # Optionally save to CSV
-    pivot_table.to_csv("saliency_iou_results.csv")
-    print("\nResults saved to saliency_iou_results.csv")
+    pivot_table.to_csv("evaluation/saliency_iou_results.csv")
+    print("\nResults saved to evaluation/saliency_iou_results.csv")
 
 if __name__ == "__main__":
     # Example: You might want to add argparse later to specify checkpoint dir, etc.

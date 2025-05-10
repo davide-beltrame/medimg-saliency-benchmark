@@ -13,6 +13,27 @@ from torchmetrics.classification import (
 import cv2 
 from PIL import Image, ImageDraw
 import os 
+import glob
+from torchvision import transforms
+
+CHECKPOINT_DIR = "./checkpoints"
+ANNOTATIONS_METADATA_PATH = "data/annotations/metadata.json"
+ANNOTATED_MASKS_DIR = "data/annotations/annotated"
+ORIGINAL_IMAGES_DIR_FOR_SALIENCY = "data/test" # Or wherever the original images for saliency evaluation are
+
+MODEL_INPUT_SIZE = (224, 224) 
+
+SALIENCY_BINARIZATION_THRESHOLD = 0.8
+
+INITIAL_PRE_CLOSING_KERNEL_SIZE = 3
+SOLIDITY_THRESHOLD = 0.6            
+OUTLINE_FILL_CLOSING_KERNEL_SIZE = 7 
+OUTLINE_EROSION_KERNEL_SIZE = 7      
+FILLED_REGION_HOLE_CLOSING_KERNEL_SIZE = 5 
+MIN_CONTOUR_AREA_FILTER = 20  
+CONSENSUS_POST_FILTER_TYPE = 'open' # Filter applied to individual processed masks before consensus
+CONSENSUS_POST_FILTER_KERNEL_SIZE = 3
+CONSENSUS_METHOD = 'intersection'
 
 class BaseConfig:
     """
@@ -553,3 +574,95 @@ def pointing_game(saliency_map, expert_mask, threshold_saliency=None):
         return 1.0
     else:
         return 0.0
+    
+CHECKPOINT_DIR = "./checkpoints"
+
+def find_checkpoint(model_short_key):
+    """
+    Finds a checkpoint file for a given model short key (e.g., "an", "vgg", "rn", "in").
+    If multiple checkpoints match (e.g., different training parameters or epochs),
+    it currently picks the first one found by glob, sorted alphabetically.
+    You might want to add logic to pick the "best" one if scores are in filenames.
+
+    Args:
+        model_short_key (str): The short key for the model (e.g., "an", "vgg", "rn", "in").
+
+    Returns:
+        str or None: Path to the checkpoint file, or None if not found.
+    """
+    if not model_short_key:
+        print("Warning: model_short_key is empty in find_checkpoint.")
+        return None
+        
+    # Construct the pattern, e.g., "an_*.ckpt"
+    # This assumes filenames like "an_True_True_0.05.ckpt"
+    ckpt_pattern = os.path.join(CHECKPOINT_DIR, f"{model_short_key}_*.ckpt")
+    ckpts = sorted(glob.glob(ckpt_pattern)) # Sort for consistency
+
+    if ckpts:        
+        selected_ckpt = ckpts[0] # Pick the first one (e.g., lowest loss if sorted by loss, or just first alphabetically)
+        print(f"Found checkpoint for '{model_short_key}': {selected_ckpt}")
+        return selected_ckpt
+    else:
+        if model_short_key == "vgg":
+            ckpt_pattern_alt = os.path.join(CHECKPOINT_DIR, "vgg*.ckpt")
+            ckpts_alt = sorted(glob.glob(ckpt_pattern_alt))
+            if ckpts_alt:
+                print(f"Found checkpoint for '{model_short_key}' using alternative pattern: {ckpts_alt[0]}")
+                return ckpts_alt[0]
+
+        print(f"Warning: No checkpoint found for model key '{model_short_key}' with pattern '{ckpt_pattern}' in {CHECKPOINT_DIR}")
+        return None
+    
+
+def load_image_tensor(image_path, device):
+    """Loads an image and converts it to a tensor for model input."""
+    try:
+        img = Image.open(image_path).convert("RGB")
+        transform = transforms.Compose([
+            transforms.Resize(MODEL_INPUT_SIZE),
+            transforms.ToTensor() # Scales to [0,1]
+        ])
+        img_tensor = transform(img).unsqueeze(0) # Add batch dimension
+        return img_tensor.to(device)
+    except FileNotFoundError:
+        print(f"Warning: Image not found at {image_path}")
+        return None
+    
+
+def binarize_saliency_map(saliency_map_np, method="fixed", threshold_value=SALIENCY_BINARIZATION_THRESHOLD):
+    if saliency_map_np is None:
+        return None
+
+    saliency_map_to_process = saliency_map_np.copy()
+    if saliency_map_to_process.max() == saliency_map_to_process.min(): # Avoid issues with flat maps
+        return np.zeros_like(saliency_map_to_process, dtype=np.uint8)
+
+    # Normalize to 0-255 for Otsu if it's in [0,1]
+    if saliency_map_to_process.max() <= 1.0 and saliency_map_to_process.min() >=0.0:
+         saliency_map_uint8 = np.uint8(255 * saliency_map_to_process)
+    else: # If already potentially 0-255 or other range, ensure it's scaled if needed.
+          # For safety, let's rescale based on its own min/max if not in [0,1]
+         saliency_map_uint8 = np.uint8(255 * (saliency_map_to_process - saliency_map_to_process.min()) / (saliency_map_to_process.max() - saliency_map_to_process.min() + 1e-8))
+
+    if method == "otsu":
+        otsu_threshold, binarized_map = cv2.threshold(
+            saliency_map_uint8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )
+        return (binarized_map / 255).astype(np.uint8)
+    elif method == "fixed":
+        return (saliency_map_np >= threshold_value).astype(np.uint8)
+    else:
+        print(f"Warning: Unknown binarization method '{method}'. Using fixed threshold.")
+        return (saliency_map_np >= threshold_value).astype(np.uint8)
+    
+
+def generate_random_map(size=MODEL_INPUT_SIZE, grid_size=10):
+    """Generates a random saliency map as per table description."""
+    random_map_small = np.zeros((grid_size, grid_size), dtype=np.float32)
+    # Pick one random pixel in the small grid to activate
+    rand_x, rand_y = np.random.randint(0, grid_size, 2)
+    random_map_small[rand_y, rand_x] = 1.0 
+    # Upsample to full size
+    random_map_full = cv2.resize(random_map_small, size, interpolation=cv2.INTER_NEAREST)
+    return random_map_full # Already 0 or 1, effectively binarized
