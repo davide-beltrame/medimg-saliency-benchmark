@@ -13,7 +13,6 @@ from torchmetrics.classification import (
 import cv2 
 from PIL import Image, ImageDraw
 import os 
-import glob 
 
 class BaseConfig:
     """
@@ -91,7 +90,7 @@ class BootstrapTestCallback(Callback):
         targets = np.array(self.all_targets)
 
         # Print distribution statistics to help diagnose
-        print(f"\nTest set statistics:")
+        print("\nTest set statistics:")
         print(f"Number of samples: {len(targets)}")
         print(f"Class distribution: {np.bincount(targets.astype(int))}")
         print(f"Prediction mean: {np.mean(preds):.4f}, std: {np.std(preds):.4f}")
