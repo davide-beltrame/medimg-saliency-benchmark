@@ -1,10 +1,12 @@
 torch
 torchvision
 pytorch-lightning>=2.0.0
+lightning
 torchmetrics>=0.7.0
 numpy
 pandas
 opencv-python
+pillow
 matplotlib
 kagglehub
 ipykernel 

@@ -11,7 +11,7 @@ from torchmetrics.classification import (
     BinarySpecificity
 )
 import cv2 
-from PIL import Image
+from PIL import Image, ImageDraw
 import os 
 import glob 
 
@@ -206,68 +206,164 @@ def load_mask(mask_path, target_size=(224, 224)):
         return None
     
 
-def find_individual_masks(image_filename_stem, annotations_dir):
+def process_circled_annotation(binary_mask_np,
+                               initial_closing_kernel_size=3,
+                               solidity_threshold=0.5,
+                               outline_fill_closing_kernel_size=7, 
+                               outline_erosion_kernel_size=7,    
+                               filled_region_hole_closing_kernel_size=5, 
+                               min_contour_area=20):
     """
-    Finds all individual expert masks for a given image stem.
+    Processes a binary mask that might contain outlines or already filled regions.
+    Iterates over all significant contours in the mask.
+    - If a contour is an outline (based on solidity), it attempts to close gaps, fill it, 
+      and then erode the boundary.
+    - If a contour is a filled region, it attempts to close internal holes.
+    Results from all processed contours are combined.
 
-    (REQUIRES RENAMING MASKS) Assumes masks are named like: [image_stem]_expert[ID]_mask.png or [image_stem]_mask_expert[ID].png
-    or simply [image_stem]_mask.png if each expert's annotations are in their own subfolder of annotations_dir.
+    Args:
+        binary_mask_np (np.ndarray): Input binary mask (HxW, values 0 or 1).
+        initial_closing_kernel_size (int): Kernel size for an initial morphological closing 
+                                           to pre-process the mask (e.g., connect tiny breaks).
+        solidity_threshold (float): Ratio of contour area to convex hull area. Contours with
+                                    solidity below this are treated as outlines.
+        outline_fill_closing_kernel_size (int): Kernel size for closing larger gaps in detected outlines
+                                                before attempting to fill them.
+        outline_erosion_kernel_size (int): Kernel size for erosion applied *only* to filled outlines
+                                           to remove the drawn line's thickness.
+        filled_region_hole_closing_kernel_size (int): Kernel size for closing internal holes in
+                                                      regions already identified as filled.
+        min_contour_area (int): Minimum area for a contour to be considered significant.
 
-    For simplicity, let's assume a common pattern: annotations_dir contains masks
-    named `[image_filename_stem]_ANYTHING_mask.png` or `[image_filename_stem]_mask_ANYTHING.png`.
-    A more robust solution would be to know the exact naming convention.
-
-    If your naming is simply `[image_filename_stem]_mask.png` but in different expert subdirectories:
-    e.g., annotations_dir/expert1/[image_filename_stem]_mask.png
-          annotations_dir/expert2/[image_filename_stem]_mask.png
-    This function would need to be adapted to walk through subdirectories.
-
-    Current assumption: All relevant masks for an image are in `annotations_dir`
-    and can be identified by `image_filename_stem` and `_mask.png` suffix, possibly with expert identifiers in between.
-    Example: `person1_bacteria_1_expertA_mask.png`, `person1_bacteria_1_expertB_mask.png`
+    Returns:
+        np.ndarray: Processed binary mask, or an empty mask if processing fails.
     """
-    mask_paths = []
-    # Adjusted glob pattern: accounts for variations like imagename_expertID_mask.png or imagename_sometag_mask.png
-    # It will find files starting with image_filename_stem, containing "_mask" and ending with ".png"
-    # To be more specific, you might use:
-    # search_pattern = os.path.join(annotations_dir, f"{image_filename_stem}_*_mask.png")
-    # For now, a bit more general if only one _mask.png exists per expert for that image_filename_stem
-    search_pattern_exact = os.path.join(annotations_dir, f"{image_filename_stem}_mask.png") # if only one per image
-    
-    # This pattern will find imagename_expert1_mask.png, imagename_expert2_mask.png etc.
-    search_pattern_glob = os.path.join(annotations_dir, f"{image_filename_stem}*mask.png")
+    if binary_mask_np is None:
+        # Return a default empty mask of a standard size if input is None
+        # Assuming target_size is (224,224) as used elsewhere, but this could be a parameter
+        return np.zeros((224,224), dtype=np.uint8) 
+    if binary_mask_np.sum() == 0: # If mask is already empty
+        return binary_mask_np.astype(np.uint8)
 
-    # Check if multiple expert folders exist within annotations_dir
-    potential_expert_dirs = [d for d in os.listdir(annotations_dir) if os.path.isdir(os.path.join(annotations_dir, d))]
-    if potential_expert_dirs:
-        for expert_dir in potential_expert_dirs:
-            # Assumes mask name is image_filename_stem + "_mask.png" inside expert folder
-            mask_file = os.path.join(annotations_dir, expert_dir, f"{image_filename_stem}_mask.png")
-            if os.path.exists(mask_file):
-                mask_paths.append(mask_file)
+    mask_uint8 = binary_mask_np.astype(np.uint8)
+
+    # 1. Initial (small) closing to connect very minor breaks and smooth the input.
+    # This helps in finding more coherent contours.
+    if initial_closing_kernel_size > 0:
+        temp_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (initial_closing_kernel_size, initial_closing_kernel_size))
+        processed_mask_for_contours = cv2.morphologyEx(mask_uint8, cv2.MORPH_CLOSE, temp_kernel)
+    else:
+        processed_mask_for_contours = mask_uint8.copy()
+
+    # 2. Find ALL external contours on this initially processed mask.
+    # cv2.RETR_EXTERNAL retrieves only the extreme outer contours.
+    # cv2.CHAIN_APPROX_SIMPLE compresses segments, leaving only their end points.
+    contours, hierarchy = cv2.findContours(processed_mask_for_contours, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     
-    if not mask_paths: # If no expert subdirectories or masks not found there
-        # Fallback to globbing directly in annotations_dir
-        # This pattern is broad: image_filename_stem<anything_including_nothing>mask.png
-        # e.g. image_stem_mask.png, image_stem_expert1_mask.png
-        for path in glob.glob(search_pattern_glob):
-             # Ensure it's truly for this stem and not a longer one, e.g. image_stem_extra_mask.png
-            if os.path.basename(path).startswith(image_filename_stem) and "_mask.png" in os.path.basename(path):
-                 mask_paths.append(path)
+    if not contours:
+        return np.zeros_like(binary_mask_np, dtype=np.uint8) # Return empty if no contours
+
+    # Create a final mask to accumulate results from all processed contours
+    final_combined_mask = np.zeros_like(binary_mask_np, dtype=np.uint8)
+
+    # 3. Iterate over ALL found contours
+    for contour in contours:
+        area = cv2.contourArea(contour)
+
+        if area < min_contour_area:
+            continue # Skip small, insignificant contours
+
+        # Create a temporary mask for processing this single contour
+        # This will hold the processed version of the current contour
+        single_contour_processed_mask = np.zeros_like(processed_mask_for_contours, dtype=np.uint8)
+
+        # Calculate Solidity of the current contour
+        # Solidity = Area of Contour / Area of Convex Hull
+        hull = cv2.convexHull(contour)
+        hull_area = cv2.contourArea(hull)
+        solidity = float(area) / hull_area if hull_area > 0 else 0.0
         
-        # If only one mask, it might be `imagename_mask.png`
-        if not mask_paths and os.path.exists(search_pattern_exact):
-            mask_paths.append(search_pattern_exact)
+        # --- Decision based on solidity for the CURRENT contour ---
+        if solidity < solidity_threshold:
+            # --- BRANCH 1: Assumed to be an OUTLINE ---
+            # The goal is to fill this outline and then erode by the line thickness.
+            
+            # a. Create a mask with just the current contour line.
+            #    Then, apply a more aggressive closing to ensure the outline is connected for filling.
+            current_outline_mask = np.zeros_like(processed_mask_for_contours, dtype=np.uint8)
+            cv2.drawContours(current_outline_mask, [contour], -1, 1, thickness=1) # Draw the line of this contour
 
-    if not mask_paths:
-        print(f"Warning: No masks found for image stem {image_filename_stem} in {annotations_dir} with pattern {search_pattern_glob} or in subdirs.")
+            if outline_fill_closing_kernel_size > 0:
+                close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (outline_fill_closing_kernel_size, outline_fill_closing_kernel_size))
+                closed_outline_for_filling = cv2.morphologyEx(current_outline_mask, cv2.MORPH_CLOSE, close_kernel)
+            else:
+                closed_outline_for_filling = current_outline_mask # Use as is if no closing
+            
+            # b. Fill this (hopefully now closed) outline.
+            #    Find contours on this specifically prepared mask and fill them.
+            fill_contours_for_this_outline, _ = cv2.findContours(closed_outline_for_filling, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if fill_contours_for_this_outline:
+                # Filter by area again, in case closing created tiny artifacts or multiple small fills
+                # Use a relative threshold based on the original contour's area or a small absolute one
+                min_fill_area = max(min_contour_area / 4.0, area / 10.0) 
+                significant_fill_contours = [fc for fc in fill_contours_for_this_outline if cv2.contourArea(fc) > min_fill_area]
+                if significant_fill_contours:
+                     cv2.drawContours(single_contour_processed_mask, significant_fill_contours, -1, 1, thickness=cv2.FILLED)
+            
+            # c. Erode the filled shape to account for the original line thickness.
+            if outline_erosion_kernel_size > 0 and single_contour_processed_mask.sum() > 0:
+                erode_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (outline_erosion_kernel_size, outline_erosion_kernel_size))
+                single_contour_processed_mask = cv2.erode(single_contour_processed_mask, erode_kernel, iterations=1)
+            
+        else:
+            # --- BRANCH 2: Assumed to be a FILLED REGION ---
+            # The region is likely already filled. The main task is to ensure any internal holes are closed.
+            # We use the 'contour' found from the 'processed_mask_for_contours'.
+            cv2.drawContours(single_contour_processed_mask, [contour], -1, 1, thickness=cv2.FILLED)
+
+            # b. Apply morphological closing to fill internal holes.
+            if filled_region_hole_closing_kernel_size > 0 and single_contour_processed_mask.sum() > 0:
+                hole_close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (filled_region_hole_closing_kernel_size, filled_region_hole_closing_kernel_size))
+                single_contour_processed_mask = cv2.morphologyEx(single_contour_processed_mask, cv2.MORPH_CLOSE, hole_close_kernel)
+        
+        # Add the processed result of this contour to the final combined mask
+        # This ensures that if multiple regions were drawn, all processed versions are included.
+        if single_contour_processed_mask.sum() > 0:
+            final_combined_mask = np.logical_or(final_combined_mask, single_contour_processed_mask).astype(np.uint8)
+            
+    return final_combined_mask
     
-    loaded_masks = []
-    for path in mask_paths:
-        mask = load_mask(path)
-        if mask is not None:
-            loaded_masks.append(mask)
-    return loaded_masks
+
+def get_masks_for_image_from_metadata(image_name_to_find, annotations_metadata, annotated_masks_dir, target_size=(224, 224)):
+    """
+    Finds and loads all individual expert masks for a given image_name using metadata.
+    
+    Args:
+        image_name_to_find (str): The filename of the original image (e.g., "person171_bacteria_826.jpeg").
+        annotations_metadata (list): A list of dictionaries, where each dict is an entry from metadata.json.
+        annotated_masks_dir (str): Path to the directory containing the '.png' mask files (e.g., "data/annotations/annotated/").
+        target_size (tuple): The (width, height) to resize masks to.
+
+    Returns:
+        list: A list of loaded binary masks (numpy arrays) for the given image.
+              Each mask is a 2D numpy array (H, W) with values 0 or 1.
+              Returns an empty list if no masks are found or if errors occur.
+    """
+    loaded_masks_with_annotators = [] # Stores tuples of (mask_array, annotator_name)
+    mask_paths_found = []
+
+    for record in annotations_metadata:
+        if record.get("image_name") == image_name_to_find:
+            annotation_filename = record.get("annotation_file")
+            annotator_name = record.get("annotator_name", "Unknown Annotator") # Get annotator name
+            if annotation_filename:
+                mask_path = os.path.join(annotated_masks_dir, annotation_filename)
+                mask_paths_found.append(mask_path)
+                mask = load_mask(mask_path, target_size=target_size)
+                if mask is not None:
+                    loaded_masks_with_annotators.append((mask, annotator_name)) # Store tuple
+
+    return loaded_masks_with_annotators
 
 
 def apply_morphological_filter(mask, operation='open', kernel_size=3):
@@ -294,38 +390,126 @@ def apply_morphological_filter(mask, operation='open', kernel_size=3):
 def create_consensus_mask(individual_masks, filter_type='open', filter_kernel_size=3, consensus_method='intersection'):
     """
     Creates a consensus mask from a list of individual binary masks.
-    individual_masks: A list of 2D numpy arrays (binary masks).
-    filter_type: 'open', 'close', or None. Applied to each mask before consensus.
-    filter_kernel_size: Kernel size for morphological filter.
-    consensus_method: 'intersection' or 'union'.
+    If consensus_method is 'intersection', an empty mask from any participant
+    (after initial processing via process_circled_annotation) will result in an empty consensus.
+    The 'filter_type' (e.g. 'open') is applied *after* this initial check for intersection.
     """
+    default_empty_shape = (224, 224) # Fallback shape
+
     if not individual_masks:
-        return None
+        return np.zeros(default_empty_shape, dtype=np.uint8)
 
-    processed_masks = []
-    for mask in individual_masks:
-        if filter_type:
-            mask_filtered = apply_morphological_filter(mask, operation=filter_type, kernel_size=filter_kernel_size)
-            processed_masks.append(mask_filtered)
-        else:
-            processed_masks.append(mask)
+    reference_shape = None
+    for m in individual_masks:
+        if m is not None and isinstance(m, np.ndarray):
+            reference_shape = m.shape
+            break
+    if reference_shape is None:
+        reference_shape = default_empty_shape
+
+    # Standardize masks: ensure all are ndarray of reference_shape, None becomes empty
+    # This list will contain a mask for *every* expert, even if it's empty.
+    standardized_masks_for_all_experts = []
+    for m_idx, m in enumerate(individual_masks):
+        if m is None:
+            standardized_masks_for_all_experts.append(np.zeros(reference_shape, dtype=np.uint8))
+        elif isinstance(m, np.ndarray) and m.shape == reference_shape:
+            standardized_masks_for_all_experts.append(m.astype(np.uint8))
+        elif isinstance(m, np.ndarray): # Shape mismatch
+            # print(f"Warning: Mask {m_idx} shape mismatch {m.shape} vs {reference_shape}. Treating as empty.")
+            standardized_masks_for_all_experts.append(np.zeros(reference_shape, dtype=np.uint8))
+        else: # Not an ndarray
+            standardized_masks_for_all_experts.append(np.zeros(reference_shape, dtype=np.uint8))
     
-    if not processed_masks:
-        return None
+    if not standardized_masks_for_all_experts: # Should be caught by initial check
+        return np.zeros(reference_shape, dtype=np.uint8)
 
+    # --- Crucial logic for intersection: if any expert's standardized mask is empty, intersection is empty ---
     if consensus_method == 'intersection':
-        # Start with the first mask, then intersect with the rest
-        consensus = processed_masks[0].copy()
-        for i in range(1, len(processed_masks)):
-            consensus = np.logical_and(consensus, processed_masks[i]).astype(np.uint8)
+        for i, m_expert in enumerate(standardized_masks_for_all_experts):
+            if m_expert.sum() == 0:
+                # print(f"Debug: Expert mask {i} is empty. Intersection result will be empty.")
+                return np.zeros(reference_shape, dtype=np.uint8)
+
+    # Apply the morphological filter (e.g., 'open') to each (now guaranteed non-empty for intersection) standardized mask
+    # For UNION, empty masks will just be OR'd with others.
+    masks_after_internal_filter = []
+    if filter_type and filter_kernel_size > 0:
+        for m_expert in standardized_masks_for_all_experts:
+            # Only apply filter if mask has content, or if it's union (where filter might still be desired on non-empty ones)
+            if m_expert.sum() > 0 or consensus_method == 'union':
+                filtered_m = apply_morphological_filter(m_expert, operation=filter_type, kernel_size=filter_kernel_size)
+                masks_after_internal_filter.append(filtered_m if filtered_m is not None else np.zeros(reference_shape, dtype=np.uint8))
+            else: # For intersection, this path shouldn't be hit if an empty mask was found above. For others, carry empty.
+                masks_after_internal_filter.append(m_expert.copy())
+    else: 
+        masks_after_internal_filter = [m.copy() for m in standardized_masks_for_all_experts]
+
+    # --- Second check for intersection: if filter_type made a mask empty ---
+    # This is important because the 'open' operation can remove small regions entirely.
+    if consensus_method == 'intersection':
+        for i, m_filtered in enumerate(masks_after_internal_filter):
+            if m_filtered.sum() == 0:
+                # print(f"Debug: Mask {i} became empty after filter '{filter_type}'. Intersection result will be empty.")
+                return np.zeros(reference_shape, dtype=np.uint8)
+    
+    if not masks_after_internal_filter: # Should not happen
+         return np.zeros(reference_shape, dtype=np.uint8)
+    
+    # --- Perform Consensus ---
+    if consensus_method == 'intersection':
+        # At this point, for intersection, all masks in masks_after_internal_filter are non-empty.
+        consensus_result = masks_after_internal_filter[0].copy()
+        for i in range(1, len(masks_after_internal_filter)):
+            consensus_result = np.logical_and(consensus_result, masks_after_internal_filter[i]).astype(np.uint8)
     elif consensus_method == 'union':
-        consensus = processed_masks[0].copy()
-        for i in range(1, len(processed_masks)):
-            consensus = np.logical_or(consensus, processed_masks[i]).astype(np.uint8)
+        # Start with an empty mask for union to correctly accumulate all positive pixels
+        consensus_result = np.zeros(reference_shape, dtype=np.uint8)
+        for m_filtered in masks_after_internal_filter:
+            if m_filtered is not None: # Ensure m_filtered is not None before logical_or
+                 consensus_result = np.logical_or(consensus_result, m_filtered).astype(np.uint8)
     else:
         raise ValueError(f"Unknown consensus_method: {consensus_method}")
+        
+    return consensus_result
 
-    return consensus
+
+def overlay_binary_mask(background_img_pil, mask_np, mask_color=(255, 0, 0), alpha=0.5):
+    """
+    Overlays a binary mask on a background PIL image.
+    
+    Args:
+        background_img_pil (PIL.Image): The background image.
+        mask_np (np.ndarray): The binary mask (HxW, values 0 or 1).
+        mask_color (tuple): RGB color for the mask.
+        alpha (float): Transparency of the mask (0.0 fully transparent, 1.0 fully opaque).
+        
+    Returns:
+        PIL.Image: Image with mask overlaid.
+    """
+    if mask_np is None:
+        return background_img_pil
+
+    # Ensure background is RGBA for alpha blending
+    background_img_pil = background_img_pil.convert("RGBA")
+    overlay_img = Image.new("RGBA", background_img_pil.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay_img)
+
+    # Scale mask to background image size if different
+    if mask_np.shape[:2] != (background_img_pil.height, background_img_pil.width):
+        mask_np_resized = cv2.resize(mask_np.astype(np.uint8), (background_img_pil.width, background_img_pil.height), interpolation=cv2.INTER_NEAREST)
+    else:
+        mask_np_resized = mask_np.astype(np.uint8)
+
+    # Create a colored version of the mask
+    for y in range(mask_np_resized.shape[0]):
+        for x in range(mask_np_resized.shape[1]):
+            if mask_np_resized[y, x] == 1: # If mask is active at this pixel
+                draw.point((x, y), fill=(*mask_color, int(alpha * 255)))
+                
+    # Alpha composite the overlay onto the background
+    combined_img = Image.alpha_composite(background_img_pil, overlay_img)
+    return combined_img.convert("RGB") # Convert back to RGB if needed
 
 
 def calculate_iou(mask1, mask2):
