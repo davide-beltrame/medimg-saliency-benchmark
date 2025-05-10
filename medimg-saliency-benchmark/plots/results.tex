@@ -1,31 +1,31 @@
-\begin{table*}[t]
-    \centering
-    \setlength{\tabcolsep}{3pt}
-    \caption{Model Performance Metrics}
-    \begin{tabularx}{\textwidth}{lYYYYc}
-        \toprule
-        Model & Pretrained & Adapted Classifier & Accuracy & F1 & ROC AUC\\
-        \midrule
-        \multirow{4}{*}{AlexNet} &  \multirow{2}{*}{No} &   No  &   87.42 $\pm$ 2.56     &   90.29 $\pm$ 2.11    &   94.50 $\pm$ 1.72\\
-         &                           &   Yes  &   87.48 $\pm$ 2.48     &   90.22 $\pm$ 2.05    &   93.40 $\pm$ 1.88\\
-        \cmidrule(lr){2-6}
-         &  \multirow{2}{*}{Yes} &   No  &   91.98 $\pm$ 2.16     &   93.75 $\pm$ 1.72    &   97.01 $\pm$ 1.08\\
-         &                           &   Yes  &   90.34 $\pm$ 2.24     &   92.72 $\pm$ 1.79    &   96.72 $\pm$ 1.13\\
-        \midrule
-        \multirow{2}{*}{InceptionNet-V1} &  \multirow{1}{*}{No} &   -  &   87.92 $\pm$ 2.49     &   91.11 $\pm$ 1.94    &   96.56 $\pm$ 1.30\\
-        \cmidrule(lr){2-6}
-         &  \multirow{1}{*}{Yes} &   -  &   91.84 $\pm$ 2.24     &   93.79 $\pm$ 1.76    &   98.06 $\pm$ 0.97\\
-        \midrule
-        \multirow{2}{*}{ResNet-50} &  \multirow{1}{*}{No} &   -  &   62.77 $\pm$ 3.69     &   77.02 $\pm$ 2.76    &   82.82 $\pm$ 3.23\\
-        \cmidrule(lr){2-6}
-         &  \multirow{1}{*}{Yes} &   -  &   94.87 $\pm$ 1.68     &   96.00 $\pm$ 1.39    &   98.24 $\pm$ 1.00\\
-        \midrule
-        \multirow{4}{*}{VGG-16} &  \multirow{2}{*}{No} &   No  &   82.64 $\pm$ 2.88     &   87.53 $\pm$ 2.27    &   93.73 $\pm$ 1.89\\
-         &                           &   Yes  &   86.35 $\pm$ 2.73     &   89.05 $\pm$ 2.33    &   92.46 $\pm$ 2.04\\
-        \cmidrule(lr){2-6}
-         &  \multirow{2}{*}{Yes} &   No  &   92.12 $\pm$ 2.09     &   93.87 $\pm$ 1.72    &   97.72 $\pm$ 0.95\\
-         &                           &   Yes  &   91.46 $\pm$ 2.24     &   93.50 $\pm$ 1.78    &   97.93 $\pm$ 0.96\\
-        \bottomrule
-    \end{tabularx}
-    \label{tab:Performance}
-\end{table*}
+        \begin{table*}[t]
+            \centering
+            \setlength{\tabcolsep}{3pt}
+            \caption{\textbf{Models Performance.} Confidence intervals at 95\% are estimated by bootstrapping on the test set. We highlight in bold only the best results per model, and in bold plus underline the best results overall.}
+            \begin{tabularx}{\textwidth}{lYYYcccc}
+                \toprule
+                Model & Pretrained & Adapted Classifier & Parameters Count (M) & Accuracy & F1 & ROC AUC & Specificity\\
+                \midrule
+                \multirow{4}{*}{AlexNet} &  \multirow{2}{*}{No} &   No  & 57 &  87.42 {\scriptsize $\pm$ 2.56}     &   90.29 {\scriptsize $\pm$ 2.11}    &   94.50 {\scriptsize $\pm$ 1.72} &   76.84 {\scriptsize $\pm$ 5.34}\\
+                 &                           &  Yes  & 2.5 &   87.48 {\scriptsize $\pm$ 2.48}     &   90.22 {\scriptsize $\pm$ 2.05}    &   93.40 {\scriptsize $\pm$ 1.88} &   78.98 {\scriptsize $\pm$ 5.11}\\
+                \cmidrule(){2-8}
+                 &  \multirow{2}{*}{\textbf{Yes}} &   \textbf{No}  & 57 &   \textbf{91.98} {\scriptsize $\pm$ 2.16}     &   \textbf{93.75} {\scriptsize $\pm$ 1.72}    &   \textbf{97.01} {\scriptsize $\pm$ 1.08} &   \textbf{84.60} {\scriptsize $\pm$ 4.55}\\
+                 &                           &    Yes  & 2.5 &   90.34 {\scriptsize $\pm$ 2.24}     &   92.72 {\scriptsize $\pm$ 1.79}    &   96.72 {\scriptsize $\pm$ 1.13} &   76.40 {\scriptsize $\pm$ 5.06}\\
+                \midrule
+                \multirow{2}{*}{InceptionNet-V1} &  \multirow{1}{*}{No} &   -  & 12 &   87.92 {\scriptsize $\pm$ 2.49}     &   91.11 {\scriptsize $\pm$ 1.94}    &   96.56 {\scriptsize $\pm$ 1.30} &   69.14 {\scriptsize $\pm$ 5.57}\\
+                \cmidrule(){2-8}
+                 &  \multirow{1}{*}{\textbf{Yes}} &   -  & 12 &   \textbf{91.84} {\scriptsize $\pm$ 2.24}     &   \textbf{93.79} {\scriptsize $\pm$ 1.76}    &   \textbf{98.06} {\scriptsize $\pm$ 0.97} &   \textbf{80.37} {\scriptsize $\pm$ 5.19}\\
+                \midrule
+                \multirow{2}{*}{ResNet-50} &  \multirow{1}{*}{No} &   -  & 23.5 &   62.77 {\scriptsize $\pm$ 3.69}     &   77.02 {\scriptsize $\pm$ 2.76}    &   82.82 {\scriptsize $\pm$ 3.23}&   0.82 {\scriptsize $\pm$ 1.06}\\
+                \cmidrule(){2-8}
+                 &  \multirow{1}{*}{\textbf{\underline{Yes}}} &   -  & 23.5 &   \textbf{\underline{94.87}} {\scriptsize $\pm$ 1.68}     &   \textbf{\underline{96.00}} {\scriptsize $\pm$ 1.39}    &   \textbf{\underline{98.24}} {\scriptsize $\pm$ 1.00} &   \textbf{\underline{88.86}} {\scriptsize $\pm$ 3.86}\\
+                \midrule
+                \multirow{4}{*}{VGG-16} &  \multirow{2}{*}{No} &   No  & 134 &   82.64 {\scriptsize $\pm$ 2.88}     &   87.53 {\scriptsize $\pm$ 2.27}    &   93.73 {\scriptsize $\pm$ 1.89} &   57.65 {\scriptsize $\pm$ 6.13}\\
+                 &                           &   Yes  & 14.7 &   86.35 {\scriptsize $\pm$ 2.73}     &   89.05 {\scriptsize $\pm$ 2.33}    &   92.46 {\scriptsize $\pm$ 2.04} &   82.01 {\scriptsize $\pm$ 4.81}\\
+                \cmidrule(){2-8}
+                 &  \multirow{2}{*}{\textbf{Yes}} &   \textbf{No}  & 134 &   \textbf{92.12} {\scriptsize $\pm$ 2.09}     &   \textbf{93.87} {\scriptsize $\pm$ 1.72}    &   97.72 {\scriptsize $\pm$ 0.95} &   \textbf{84.56} {\scriptsize $\pm$ 4.34}\\
+                 &                           &   Yes  & 14.7 &   91.46 {\scriptsize $\pm$ 2.24}     &   93.50 {\scriptsize $\pm$ 1.78}    &   \textbf{97.93} {\scriptsize $\pm$ 0.96} &   79.85 {\scriptsize $\pm$ 5.03}\\
+                \bottomrule
+            \end{tabularx}
+            \label{tab:Performance}
+        \end{table*}
