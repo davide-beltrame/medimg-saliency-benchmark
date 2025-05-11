@@ -229,7 +229,7 @@ def load_mask(mask_path, target_size=(224, 224)):
 
 def process_circled_annotation(binary_mask_np,
                                initial_closing_kernel_size=3,
-                               solidity_threshold=0.5,
+                               solidity_threshold=0.6,
                                outline_fill_closing_kernel_size=7, 
                                outline_erosion_kernel_size=7,    
                                filled_region_hole_closing_kernel_size=5, 
@@ -372,7 +372,6 @@ def get_masks_for_image_from_metadata(image_name_to_find, annotations_metadata, 
     """
     loaded_masks_with_annotators = [] # Stores tuples of (mask_array, annotator_name)
     mask_paths_found = []
-
     for record in annotations_metadata:
         if record.get("image_name") == image_name_to_find:
             annotation_filename = record.get("annotation_file")
@@ -629,6 +628,18 @@ def load_image_tensor(image_path, device):
         print(f"Warning: Image not found at {image_path}")
         return None
     
+def load_image_np(image_path):
+    """Loads an image and resize it."""
+    try:
+        img = Image.open(image_path).convert("RGB")
+        transform = transforms.Compose([
+            transforms.Resize(MODEL_INPUT_SIZE)
+        ])
+        img_tensor = transform(img) # Add batch dimension
+        return np.array(img_tensor)
+    except FileNotFoundError:
+        print(f"Warning: Image not found at {image_path}")
+        return None
 
 def binarize_saliency_map(saliency_map_np, method="fixed", threshold_value=SALIENCY_BINARIZATION_THRESHOLD):
     if saliency_map_np is None:
@@ -665,4 +676,19 @@ def generate_random_map(size=MODEL_INPUT_SIZE, grid_size=10):
     random_map_small[rand_y, rand_x] = 1.0 
     # Upsample to full size
     random_map_full = cv2.resize(random_map_small, size, interpolation=cv2.INTER_NEAREST)
-    return random_map_full # Already 0 or 1, effectively binarized
+    return random_map_full # Already 0 or 1, effectively binarized by using inter_nearest
+
+def generate_random_mask_like(mask, grid_size, nonzero_perc):
+    """Generates a random mask with shape as the one."""
+    H, W = mask.shape
+    assert H == W
+    random_mask_small = np.zeros((grid_size, grid_size), dtype=np.float32)
+
+    # Pick one random pixel in the small grid to activate
+    n = int(grid_size*grid_size*nonzero_perc)
+    for _ in range(n):
+        rand_x, rand_y = np.random.randint(0, grid_size, 2)
+        random_mask_small[rand_y, rand_x] = 1.0 
+    # Upsample to full size
+    random_mask_full = cv2.resize(random_mask_small, (H, W))
+    return random_mask_full.round()
