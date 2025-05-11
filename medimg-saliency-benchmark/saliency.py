@@ -12,6 +12,7 @@ from models import (
     ResNet50Binary,
     InceptionNetBinary
 )
+from tqdm import tqdm
 class CAM:
     """
     Class Activation Map (CAM) saliency map.
@@ -179,65 +180,82 @@ class GradCAM:
 class RISE:
     """
     Randomized Input Sampling for Explanation (RISE).
-    Apply random binary mask on input and compute the predicted class probability as a weight for the mask.
+    Apply random binary masks on input and use predicted class probabilities as weights.
     Aggregate multiple masks to obtain a saliency map.
     """
-    def __init__(self, model, num_masks=100, scale_factor = 20):
+    def __init__(self, model, num_masks=8000, input_size=224, scale_factor=20, p1=0.3):
         self.model = model
         self.model.eval()
         self.num_masks = num_masks
+        self.input_size = input_size
         self.scale_factor = scale_factor
+        self.p1 = p1  # Probability of 1 in the binary mask
+        self.masks = None
+        
+    def generate_masks(self):
+        # Generate smaller masks and upsample them
+        cell_size = self.scale_factor
+        grid_size = self.input_size // cell_size
+        
+        # Initialize smaller masks with random binary values
+        masks = np.random.binomial(1, self.p1, size=(self.num_masks, grid_size, grid_size))
+        
+        # Upsample all masks at once for efficiency
+        upsampled_masks = np.zeros((self.num_masks, self.input_size, self.input_size))
+        for i in range(self.num_masks):
+            mask = masks[i].astype(np.float32)
 
-    def __call__(self, input_tensor):
-
+            # Use bilinear interpolation for smoother masks
+            upsampled_masks[i] = cv2.resize(mask, (self.input_size, self.input_size), 
+                                           interpolation=cv2.INTER_LINEAR)
+        
+        self.masks = upsampled_masks
+        return upsampled_masks
+        
+    def __call__(self, input_tensor, target_class=None):
         assert input_tensor.dim() == 4
-        assert input_tensor.shape[0] == 1
-        assert input_tensor.shape[-2] == input_tensor.shape[-1]
-        assert input_tensor.dtype == torch.float32
-        _, _, H, W = input_tensor.shape
+        assert input_tensor.shape[0] == 1 
+        
+        # Get input dimensions
+        _, C, H, W = input_tensor.shape
+        device = input_tensor.device
+        
+        # Generate masks if not already generated
+        if self.masks is None or self.masks.shape[1:] != (H, W):
+            self.input_size = H 
+            self.generate_masks()
         
         # Prepare the output tensor for the saliency map
-        map = np.zeros((H, W))
-
-        # Generate random binary masks and aggregate
-        for _ in range(self.num_masks):
-            
-            # Create a random binary mask
-            mask = np.random.binomial(
-                n=1,
-                p=0.5,
-                size=(H // self.scale_factor, W // self.scale_factor)
-            ) 
-            
-            # Cast to input type
-            mask = mask.astype(np.float32)
-
-            # Upsample to get smooth mask
-            mask = cv2.resize(
-                src = mask,
-                dsize=(W, H)
-            )
-            
-            # Apply the mask to the input image
-            masked_input = input_tensor * torch.tensor(mask, device=input_tensor.device)
-            
-            # Forward pass through the model
-            output = self.model(masked_input)
-            
-            # Get the prob to use as weight
-            class_prob = torch.nn.functional.sigmoid(output)
-            
-            # Convert to scalar
-            class_prob = class_prob[0, 0].item()
-
-            # Add the masked input contribution to the 
-            # saliency map, weighted by the class score
-            map += mask * class_prob
-
-        # Ensure all values are non-negative
-        map = np.maximum(map, 0)  
-
-        # Normalize the saliency map to [0, 1]
-        map = (map - map.min()) / (map.max() - map.min() + 1e-8)
+        saliency_map = np.zeros((H, W))
         
-        return map
+        # Get original prediction if target class is not specified
+        if target_class is None:
+            with torch.no_grad():
+                output = self.model(input_tensor)
+                # Binary case
+                target_class = 0
+        
+        # Apply masks and get weighted sum
+        for i in tqdm(range(self.num_masks)):
+            mask = self.masks[i]
+            mask_tensor = torch.tensor(mask, dtype=torch.float32, device=device).view(1, 1, H, W)
+            mask_tensor = mask_tensor.repeat(1, C, 1, 1)  # Repeat for all channels
+            
+            # Apply mask to input
+            masked_input = input_tensor * mask_tensor
+            
+            # Forward pass
+            with torch.no_grad():
+                output = self.model(masked_input)
+            
+            # Get probability for the target class
+            class_prob = torch.sigmoid(output)[0, 0].item()
+            
+            # Add contribution to saliency map
+            saliency_map += mask * class_prob
+        
+        # Normalize the saliency map
+        if np.max(saliency_map) > 0:
+            saliency_map = (saliency_map - np.min(saliency_map)) / (np.max(saliency_map) - np.min(saliency_map))
+        
+        return saliency_map
