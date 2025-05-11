@@ -221,27 +221,18 @@ def load_mask(mask_path, target_size=(224, 224)):
     Loads a PNG mask image, converts to grayscale, resizes, and binarizes.
     White pixels (255) are foreground, black (0) are background.
     """
-    try:
-        mask = Image.open(mask_path).convert("L")  # Convert to grayscale
-        mask = mask.resize(target_size, Image.NEAREST)
-        mask_np = np.array(mask)
-        # Binarize: threshold at 128 (common for L mode if not purely 0/255)
-        # If you are sure your masks are strictly 0 and 255, this can be more direct.
-        binary_mask = (mask_np > 128).astype(
-            np.uint8
-        )  # Foreground is 1, background is 0
-        return binary_mask
-    except FileNotFoundError:
-        print(f"Warning: Mask file not found at {mask_path}")
-        return None
-    except Exception as e:
-        print(f"Warning: Error loading mask {mask_path}: {e}")
-        return None
+    mask = Image.open(mask_path).convert("L")  # Convert to grayscale
+    mask = mask.resize(target_size, Image.NEAREST) # Resize to target size using nearest neighbor interpolation
+    mask_np = np.array(mask)
+    binary_mask = (mask_np > 128).astype(
+        np.uint8
+    )  # Foreground is 1, background is 0
+    return binary_mask
 
 
 def process_circled_annotation(
     binary_mask_np,
-    initial_closing_kernel_size=3,
+    initial_closing_kernel_size=3, 
     solidity_threshold=0.6,
     outline_fill_closing_kernel_size=7,
     outline_erosion_kernel_size=7,
@@ -249,58 +240,37 @@ def process_circled_annotation(
     min_contour_area=20,
 ):
     """
-    Processes a binary mask that might contain outlines or already filled regions.
-    Iterates over all significant contours in the mask.
-    - If a contour is an outline (based on solidity), it attempts to close gaps, fill it,
-      and then erode the boundary.
-    - If a contour is a filled region, it attempts to close internal holes.
-    Results from all processed contours are combined.
+    Processes binary masks containing either outlines or filled regions.
+    For each significant contour:
+    - Outlines (low solidity): closes gaps, fills interior, erodes boundaries
+    - Filled regions: closes internal holes
+    All processed contours are combined into the final mask.
 
     Args:
-        binary_mask_np (np.ndarray): Input binary mask (HxW, values 0 or 1).
-        initial_closing_kernel_size (int): Kernel size for an initial morphological closing
-                                           to pre-process the mask (e.g., connect tiny breaks).
-        solidity_threshold (float): Ratio of contour area to convex hull area. Contours with
-                                    solidity below this are treated as outlines.
-        outline_fill_closing_kernel_size (int): Kernel size for closing larger gaps in detected outlines
-                                                before attempting to fill them.
-        outline_erosion_kernel_size (int): Kernel size for erosion applied *only* to filled outlines
-                                           to remove the drawn line's thickness.
-        filled_region_hole_closing_kernel_size (int): Kernel size for closing internal holes in
-                                                      regions already identified as filled.
-        min_contour_area (int): Minimum area for a contour to be considered significant.
-
+        binary_mask_np: Input binary mask (0s and 1s)
+        initial_closing_kernel_size: Kernel size for connecting small breaks
+        solidity_threshold: Threshold to distinguish outlines from filled regions
+        outline_fill_closing_kernel_size: Kernel for closing gaps in outlines
+        outline_erosion_kernel_size: Kernel for reducing thickness of filled outlines
+        filled_region_hole_closing_kernel_size: Kernel for filling holes in regions
+        min_contour_area: Minimum size of contours to process
     Returns:
         np.ndarray: Processed binary mask, or an empty mask if processing fails.
     """
     if binary_mask_np is None:
-        # Return a default empty mask of a standard size if input is None
-        # Assuming target_size is (224,224) as used elsewhere, but this could be a parameter
         return np.zeros((224, 224), dtype=np.uint8)
     if binary_mask_np.sum() == 0:  # If mask is already empty
         return binary_mask_np.astype(np.uint8)
-
     mask_uint8 = binary_mask_np.astype(np.uint8)
 
     # 1. Initial (small) closing to connect very minor breaks and smooth the input.
-    # This helps in finding more coherent contours.
-    if initial_closing_kernel_size > 0:
-        temp_kernel = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE,
-            (initial_closing_kernel_size, initial_closing_kernel_size),
-        )
-        processed_mask_for_contours = cv2.morphologyEx(
-            mask_uint8, cv2.MORPH_CLOSE, temp_kernel
-        )
-    else:
-        processed_mask_for_contours = mask_uint8.copy()
+    temp_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (initial_closing_kernel_size, initial_closing_kernel_size))
+    processed_mask_for_contours = cv2.morphologyEx(mask_uint8, cv2.MORPH_CLOSE, temp_kernel)
 
     # 2. Find ALL external contours on this initially processed mask.
     # cv2.RETR_EXTERNAL retrieves only the extreme outer contours.
     # cv2.CHAIN_APPROX_SIMPLE compresses segments, leaving only their end points.
-    contours, hierarchy = cv2.findContours(
-        processed_mask_for_contours, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-    )
+    contours, hierarchy = cv2.findContours(processed_mask_for_contours, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     if not contours:
         return np.zeros_like(
@@ -454,17 +424,13 @@ def get_masks_for_image_from_metadata(
     for record in annotations_metadata:
         if record.get("image_name") == image_name_to_find:
             annotation_filename = record.get("annotation_file")
-            annotator_name = record.get(
-                "annotator_name", "Unknown Annotator"
-            )  # Get annotator name
+            annotator_name = record.get("annotator_name", "Unknown Annotator")  # Get annotator name
             if annotation_filename:
                 mask_path = os.path.join(annotated_masks_dir, annotation_filename)
                 mask_paths_found.append(mask_path)
                 mask = load_mask(mask_path, target_size=target_size)
                 if mask is not None:
-                    loaded_masks_with_annotators.append(
-                        (mask, annotator_name)
-                    )  # Store tuple
+                    loaded_masks_with_annotators.append((mask, annotator_name))
 
     return loaded_masks_with_annotators
 
@@ -486,9 +452,7 @@ def apply_morphological_filter(mask, operation="open", kernel_size=3):
     elif operation == "close":
         return cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, kernel)
     else:
-        print(
-            f"Warning: Unknown morphological operation '{operation}'. Returning original mask."
-        )
+        print(f"Warning: Unknown morphological operation '{operation}'. Returning original mask.")
         return mask
 
 
@@ -550,24 +514,19 @@ def create_consensus_mask(
     # Apply the morphological filter (e.g., 'open') to each (now guaranteed non-empty for intersection) standardized mask
     # For UNION, empty masks will just be OR'd with others.
     masks_after_internal_filter = []
-    if filter_type and filter_kernel_size > 0:
-        for m_expert in standardized_masks_for_all_experts:
-            # Only apply filter if mask has content, or if it's union (where filter might still be desired on non-empty ones)
-            if m_expert.sum() > 0 or consensus_method == "union":
-                filtered_m = apply_morphological_filter(
-                    m_expert, operation=filter_type, kernel_size=filter_kernel_size
-                )
-                masks_after_internal_filter.append(
-                    filtered_m
-                    if filtered_m is not None
-                    else np.zeros(reference_shape, dtype=np.uint8)
-                )
-            else:  # For intersection, this path shouldn't be hit if an empty mask was found above. For others, carry empty.
-                masks_after_internal_filter.append(m_expert.copy())
-    else:
-        masks_after_internal_filter = [
-            m.copy() for m in standardized_masks_for_all_experts
-        ]
+    for m_expert in standardized_masks_for_all_experts:
+        # Only apply filter if mask has content, or if it's union (where filter might still be desired on non-empty ones)
+        if m_expert.sum() > 0 or consensus_method == "union":
+            filtered_m = apply_morphological_filter(
+                m_expert, operation=filter_type, kernel_size=filter_kernel_size
+            )
+            masks_after_internal_filter.append(
+                filtered_m
+                if filtered_m is not None
+                else np.zeros(reference_shape, dtype=np.uint8)
+            )
+        else:  # For intersection, this path shouldn't be hit if an empty mask was found above. For others, carry empty.
+            masks_after_internal_filter.append(m_expert.copy())
 
     # --- Second check for intersection: if filter_type made a mask empty ---
     # This is important because the 'open' operation can remove small regions entirely.
@@ -577,27 +536,18 @@ def create_consensus_mask(
                 # print(f"Debug: Mask {i} became empty after filter '{filter_type}'. Intersection result will be empty.")
                 return np.zeros(reference_shape, dtype=np.uint8)
 
-    if not masks_after_internal_filter:  # Should not happen
-        return np.zeros(reference_shape, dtype=np.uint8)
-
     # --- Perform Consensus ---
     if consensus_method == "intersection":
         # At this point, for intersection, all masks in masks_after_internal_filter are non-empty.
         consensus_result = masks_after_internal_filter[0].copy()
         for i in range(1, len(masks_after_internal_filter)):
-            consensus_result = np.logical_and(
-                consensus_result, masks_after_internal_filter[i]
-            ).astype(np.uint8)
+            consensus_result = np.logical_and(consensus_result, masks_after_internal_filter[i]).astype(np.uint8)
     elif consensus_method == "union":
         # Start with an empty mask for union to correctly accumulate all positive pixels
         consensus_result = np.zeros(reference_shape, dtype=np.uint8)
         for m_filtered in masks_after_internal_filter:
-            if (
-                m_filtered is not None
-            ):  # Ensure m_filtered is not None before logical_or
-                consensus_result = np.logical_or(consensus_result, m_filtered).astype(
-                    np.uint8
-                )
+            if m_filtered is not None:
+                consensus_result = np.logical_or(consensus_result, m_filtered).astype(np.uint8)
     else:
         raise ValueError(f"Unknown consensus_method: {consensus_method}")
 
@@ -701,8 +651,6 @@ def find_checkpoint(model_short_key):
     Finds a checkpoint file for a given model short key (e.g., "an", "vgg", "rn", "in").
     If multiple checkpoints match (e.g., different training parameters or epochs),
     it currently picks the first one found by glob, sorted alphabetically.
-    You might want to add logic to pick the "best" one if scores are in filenames.
-
     Args:
         model_short_key (str): The short key for the model (e.g., "an", "vgg", "rn", "in").
 
@@ -719,37 +667,16 @@ def find_checkpoint(model_short_key):
     ckpts = sorted(glob.glob(ckpt_pattern))  # Sort for consistency
 
     if ckpts:
-        selected_ckpt = ckpts[
-            0
-        ]  # Pick the first one (e.g., lowest loss if sorted by loss, or just first alphabetically)
+        selected_ckpt = ckpts[0]  # Pick the first one (e.g., lowest loss if sorted by loss, or just first alphabetically)
         print(f"Found checkpoint for '{model_short_key}': {selected_ckpt}")
         return selected_ckpt
-    else:
-        if model_short_key == "vgg":
-            ckpt_pattern_alt = os.path.join(CHECKPOINT_DIR, "vgg*.ckpt")
-            ckpts_alt = sorted(glob.glob(ckpt_pattern_alt))
-            if ckpts_alt:
-                print(
-                    f"Found checkpoint for '{model_short_key}' using alternative pattern: {ckpts_alt[0]}"
-                )
-                return ckpts_alt[0]
-
-        print(
-            f"Warning: No checkpoint found for model key '{model_short_key}' with pattern '{ckpt_pattern}' in {CHECKPOINT_DIR}"
-        )
-        return None
 
 
 def load_image_tensor(image_path, device):
     """Loads an image and converts it to a tensor for model input."""
     try:
         img = Image.open(image_path).convert("RGB")
-        transform = transforms.Compose(
-            [
-                transforms.Resize(MODEL_INPUT_SIZE),
-                transforms.ToTensor(),  # Scales to [0,1]
-            ]
-        )
+        transform = transforms.Compose([transforms.Resize(MODEL_INPUT_SIZE), transforms.ToTensor()]) # Scales to [0,1]
         img_tensor = transform(img).unsqueeze(0)  # Add batch dimension
         return img_tensor.to(device)
     except FileNotFoundError:
@@ -759,14 +686,10 @@ def load_image_tensor(image_path, device):
 
 def load_image_np(image_path):
     """Loads an image and resize it."""
-    try:
-        img = Image.open(image_path).convert("RGB")
-        transform = transforms.Compose([transforms.Resize(MODEL_INPUT_SIZE)])
-        img_tensor = transform(img)  # Add batch dimension
-        return np.array(img_tensor)
-    except FileNotFoundError:
-        print(f"Warning: Image not found at {image_path}")
-        return None
+    img = Image.open(image_path).convert("RGB")
+    transform = transforms.Compose([transforms.Resize(MODEL_INPUT_SIZE)])
+    img_tensor = transform(img)  # Add batch dimension
+    return np.array(img_tensor)
 
 
 def binarize_saliency_map(
@@ -776,34 +699,10 @@ def binarize_saliency_map(
         return None
 
     saliency_map_to_process = saliency_map_np.copy()
-    if (
-        saliency_map_to_process.max() == saliency_map_to_process.min()
-    ):  # Avoid issues with flat maps
+    if saliency_map_to_process.max() == saliency_map_to_process.min():  # Avoid issues with flat maps
         return np.zeros_like(saliency_map_to_process, dtype=np.uint8)
 
-    # Normalize to 0-255 for Otsu if it's in [0,1]
-    if saliency_map_to_process.max() <= 1.0 and saliency_map_to_process.min() >= 0.0:
-        saliency_map_uint8 = np.uint8(255 * saliency_map_to_process)
-    else:  # If already potentially 0-255 or other range, ensure it's scaled if needed.
-        # For safety, let's rescale based on its own min/max if not in [0,1]
-        saliency_map_uint8 = np.uint8(
-            255
-            * (saliency_map_to_process - saliency_map_to_process.min())
-            / (saliency_map_to_process.max() - saliency_map_to_process.min() + 1e-8)
-        )
-
-    if method == "otsu":
-        otsu_threshold, binarized_map = cv2.threshold(
-            saliency_map_uint8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-        )
-        return (binarized_map / 255).astype(np.uint8)
-    elif method == "fixed":
-        return (saliency_map_np >= threshold_value).astype(np.uint8)
-    else:
-        print(
-            f"Warning: Unknown binarization method '{method}'. Using fixed threshold."
-        )
-        return (saliency_map_np >= threshold_value).astype(np.uint8)
+    return (saliency_map_np >= threshold_value).astype(np.uint8)
 
 
 def generate_random_map(size=MODEL_INPUT_SIZE, grid_size=10):
@@ -813,12 +712,8 @@ def generate_random_map(size=MODEL_INPUT_SIZE, grid_size=10):
     rand_x, rand_y = np.random.randint(0, grid_size, 2)
     random_map_small[rand_y, rand_x] = 1.0
     # Upsample to full size
-    random_map_full = cv2.resize(
-        random_map_small, size, interpolation=cv2.INTER_NEAREST
-    )
-    return (
-        random_map_full  # Already 0 or 1, effectively binarized by using inter_nearest
-    )
+    random_map_full = cv2.resize(random_map_small, size, interpolation=cv2.INTER_NEAREST)
+    return random_map_full  # Already 0 or 1, effectively binarized by using inter_nearest
 
 
 def generate_random_mask_like(mask, grid_size, nonzero_perc):
