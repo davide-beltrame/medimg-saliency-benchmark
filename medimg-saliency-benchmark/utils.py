@@ -554,6 +554,50 @@ def create_consensus_mask(
     return consensus_result
 
 
+def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_masks_dir):
+    """
+    Generates final consensus masks for all images that have annotations.
+    Returns a dictionary: {image_filename: consensus_mask_np}
+    Only includes images where the final consensus mask is non-empty.
+    """
+    consensus_masks_dict = {}
+    unique_image_names = sorted(list(set(record['image_name'] for record in annotations_metadata_list)))
+    
+    print(f"\nRunning {CONSENSUS_METHOD} consensus with threshold {SALIENCY_BINARIZATION_THRESHOLD} from {RUN_NAME} mode.")
+    print(f"\nGenerating consensus masks for {len(unique_image_names)} unique images...")
+    processed_count = 0
+    for image_name in unique_image_names:
+        raw_masks_tuples = utils.get_masks_for_image_from_metadata(image_name,annotations_metadata_list, annotated_masks_dir, target_size=MODEL_INPUT_SIZE)
+
+        base_processed_masks = []
+        for raw_mask, annotator_name in raw_masks_tuples: 
+            processed_mask_step1 = utils.process_circled_annotation(
+                raw_mask,
+                initial_closing_kernel_size=INITIAL_PRE_CLOSING_KERNEL_SIZE,
+                solidity_threshold=SOLIDITY_THRESHOLD,
+                outline_fill_closing_kernel_size=OUTLINE_FILL_CLOSING_KERNEL_SIZE,
+                outline_erosion_kernel_size=OUTLINE_EROSION_KERNEL_SIZE,
+                filled_region_hole_closing_kernel_size=FILLED_REGION_HOLE_CLOSING_KERNEL_SIZE,
+                min_contour_area=MIN_CONTOUR_AREA_FILTER
+            )
+            if processed_mask_step1 is None: # Ensure it's an array for create_consensus_mask
+                processed_mask_step1 = np.zeros(MODEL_INPUT_SIZE, dtype=np.uint8)
+            base_processed_masks.append(processed_mask_step1)
+
+        final_consensus = utils.create_consensus_mask(
+            base_processed_masks,
+            filter_type=CONSENSUS_POST_FILTER_TYPE,
+            filter_kernel_size=CONSENSUS_POST_FILTER_KERNEL_SIZE,
+            consensus_method=CONSENSUS_METHOD
+        )
+
+        if final_consensus is not None and final_consensus.sum() > 0:
+            consensus_masks_dict[image_name] = final_consensus
+            processed_count +=1
+    print(f"Generated {processed_count} non-empty consensus masks for evaluation.")
+    return consensus_masks_dict
+
+
 def overlay_binary_mask(background_img_pil, mask_np, mask_color=(255, 0, 0), alpha=0.5):
     """
     Overlays a binary mask on a background PIL image.
