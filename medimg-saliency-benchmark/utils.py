@@ -670,6 +670,18 @@ def find_checkpoint(model_short_key):
         selected_ckpt = ckpts[0]  # Pick the first one (e.g., lowest loss if sorted by loss, or just first alphabetically)
         print(f"Found checkpoint for '{model_short_key}': {selected_ckpt}")
         return selected_ckpt
+    
+
+def parse_checkpoint_filename(filename):
+    """
+    Parses a checkpoint filename like 'an_True_False_0.05.ckpt'
+    into model_short_key, linear (bool), pretrained (bool).
+    """
+    parts = os.path.basename(filename).replace(".ckpt", "").split('_')
+    model_short_key = parts[0]
+    linear_bool = parts[1].lower() == 'true' 
+    pretrained_bool = parts[2].lower() == 'true'
+    return {'model': model_short_key, 'linear': linear_bool, 'pretrained': pretrained_bool}
 
 
 def load_image_tensor(image_path, device):
@@ -730,3 +742,13 @@ def generate_random_mask_like(mask, grid_size, nonzero_perc):
     # Upsample to full size
     random_mask_full = cv2.resize(random_mask_small, (H, W))
     return random_mask_full.round()
+
+
+def get_device():
+    """Gets the appropriate torch device."""
+    if torch.backends.mps.is_available():
+        return torch.device("mps")
+    elif torch.cuda.is_available():
+        return torch.device("cuda")
+    else:
+        return torch.device("cpu")
