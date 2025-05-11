@@ -15,7 +15,7 @@ from models import AlexNetBinary, VGG16Binary, ResNet50Binary, InceptionNetBinar
 import saliency
 from datamodule import Dataset as PnDataset 
 
-CONSENSUS_METHOD = "full"
+CONSENSUS_TYPE = "full"
 RUN_NAME = "test"
 
 CHECKPOINT_DIR = "./checkpoints"
@@ -98,6 +98,24 @@ def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_mask
     print(f"Generated {processed_count} non-empty consensus masks for evaluation.")
     return consensus_masks_dict
 
+def parse_checkpoint_filename(filename):
+    """
+    Parses a checkpoint filename like 'an_True_False_0.05.ckpt'
+    into model_short_key, linear (bool), pretrained (bool).
+    """
+    parts = os.path.basename(filename).replace(".ckpt", "").split('_')
+    if len(parts) < 3:
+        print(f"  Warning: Could not parse filename {filename}. Expected format like 'model_linear_pretrained_score.ckpt'.")
+        return None 
+    model_short_key = parts[0]
+    try:
+        linear_bool = parts[1].lower() == 'true'
+        pretrained_bool = parts[2].lower() == 'true'
+    except IndexError:
+        print(f"  Warning: Could not parse linear/pretrained from filename parts: {parts} for file {filename}")
+        return None
+    return {'model': model_short_key, 'linear': linear_bool, 'pretrained': pretrained_bool}
+
 def main():
     device = get_device()
     print(f"Using device: {device}")
@@ -132,116 +150,128 @@ def main():
     evaluation_images = list(expert_consensus_masks.keys())
     print(f"\nStarting saliency evaluation for {len(evaluation_images)} images with non-empty consensus masks.")
 
-    # 3. Define Models and Saliency Methods
-    # Model keys should roughly match parts of checkpoint filenames
-    model_configs = {
-        "AlexNet": {"class": AlexNetBinary, "key_name": "an", "ckpt_path": None},
-        "VGG": {"class": VGG16Binary, "key_name": "vgg", "ckpt_path": None},
-        "ResNet": {"class": ResNet50Binary, "key_name": "rn", "ckpt_path": None}, # Assuming ResNet50
-        "InceptionNet": {"class": InceptionNetBinary, "key_name": "in", "ckpt_path": None},
-    }
-    
-    # Find checkpoints
-    for model_name, config in model_configs.items():
-        config["ckpt_path"] = utils.find_checkpoint(config["key_name"])
-        if not config["ckpt_path"]:
-            print(f"Could not find checkpoint for {model_name}, it will be skipped.")
+    saliency_methods = ["CAM", "GradCAM", "Random"] # Keep RISE out if it's not in your saliency.py or not working
+    all_results_data = [] # To store dicts for DataFrame: {'model': 'an', 'linear': True, ... 'CAM': 0.1, ...}
 
-    saliency_methods = ["CAM", "GradCAM", "Random"]
-    results_data = [] # To store dicts for DataFrame
+    # Get all checkpoint files from the CHECKPOINT_DIR
+    all_checkpoint_paths = sorted(glob.glob(os.path.join(CHECKPOINT_DIR, "*.ckpt")))
 
-    # 4. Perform Evaluation
-    for model_display_name, config in model_configs.items():
-        if not config["ckpt_path"]:
-            for sm_name in saliency_methods:
-                results_data.append({"Model": model_display_name, "SaliencyMethod": sm_name, "AvgIoU": np.nan})
-            continue
+    if not all_checkpoint_paths:
+        print(f"No checkpoint files (*.ckpt) found in {CHECKPOINT_DIR}. Exiting.")
+        return
+    print(f"\nFound {len(all_checkpoint_paths)} checkpoint files to process.")
 
-        print(f"\nEvaluating Model: {model_display_name} using checkpoint: {config['ckpt_path']}")
+    # 4. Perform Evaluation for each checkpoint
+    for ckpt_idx, ckpt_path in enumerate(all_checkpoint_paths):
+        print(f"\nProcessing checkpoint {ckpt_idx + 1}/{len(all_checkpoint_paths)}: {os.path.basename(ckpt_path)}")
+        
+        parsed_info = parse_checkpoint_filename(os.path.basename(ckpt_path))
+        if not parsed_info:
+            print(f"  Skipping checkpoint {ckpt_path} due to parsing error.")
+            continue # Skip if filename couldn't be parsed
+
+        # This dictionary will store IoUs for the current checkpoint config
+        current_config_results = {
+            'model': parsed_info['model'],
+            'linear': parsed_info['linear'],
+            'pretrained': parsed_info['pretrained']
+            # 'checkpoint_filename': os.path.basename(ckpt_path) # Optional: for reference
+        }
+
         try:
-            # Load the PyTorch Lightning model wrapper
-            pl_model_wrapper = BaseCNN.load_from_checkpoint(config["ckpt_path"], map_location=device)
-            # Get the actual underlying model (e.g., AlexNetBinary instance)
+            pl_model_wrapper = BaseCNN.load_from_checkpoint(ckpt_path, map_location=device)
             actual_model = pl_model_wrapper.model 
             actual_model.to(device).eval()
         except Exception as e:
-            print(f"  Error loading model {model_display_name}: {e}. Skipping.")
-            for sm_name in saliency_methods:
-                results_data.append({"Model": model_display_name, "SaliencyMethod": sm_name, "AvgIoU": np.nan})
+            print(f"  Error loading model from {ckpt_path}: {e}. Skipping.")
+            for sm_name_skip in saliency_methods:
+                current_config_results[sm_name_skip] = np.nan
+            all_results_data.append(current_config_results)
             continue
 
-        # Initialize saliency tools for this model
-        saliency_tools = {}
-        try:
-            if hasattr(saliency, 'CAM') and (isinstance(actual_model, AlexNetBinary) or isinstance(actual_model, VGG16Binary) or isinstance(actual_model, ResNet50Binary) or isinstance(actual_model, InceptionNetBinary)): # Check if model is compatible
-                 saliency_tools["CAM"] = saliency.CAM(actual_model)
-            else: print(f"  CAM not supported or saliency.CAM not found for {model_display_name}")
-            if hasattr(saliency, 'GradCAM'): saliency_tools["GradCAM"] = saliency.GradCAM(actual_model)
-            else: print(f"  saliency.GradCAM not found for {model_display_name}")
-            if hasattr(saliency, 'RISE'): saliency_tools["RISE"] = saliency.RISE(actual_model, num_masks=500, scale_factor=16) # Adjusted RISE params for speed
-            else: print(f"  saliency.RISE not found for {model_display_name}")
-        except Exception as e:
-            print(f"  Error initializing saliency tools for {model_display_name}: {e}")
-            # Continue, some tools might still work or we use NaN
-
         for sm_name in saliency_methods:
-            ious_for_current_pair = []
-            print(f"  Processing Saliency Method: {sm_name}")
+            ious_for_current_saliency_method = []
+            # print(f"  Processing Saliency Method: {sm_name}") # Less verbose
+            
+            # Create the saliency tool just before using it
+            saliency_tool = None
+            try:
+                if sm_name == "CAM" and hasattr(saliency, 'CAM'):
+                    saliency_tool = saliency.CAM(actual_model)
+                elif sm_name == "GradCAM" and hasattr(saliency, 'GradCAM'):
+                    saliency_tool = saliency.GradCAM(actual_model)
+                # elif sm_name == "RISE" and hasattr(saliency, 'RISE'):
+                #     saliency_tool = saliency.RISE(actual_model, num_masks=500, scale_factor=16)
+            except Exception as e:
+                print(f"  Warning: Error initializing {sm_name} for {ckpt_path}: {e}")
 
-            for image_idx, image_filename in enumerate(evaluation_images):
+            for image_filename in evaluation_images:
                 possible_paths = [
                     os.path.join(ORIGINAL_IMAGES_DIR_FOR_SALIENCY, "PNEUMONIA", image_filename),
                     os.path.join(ORIGINAL_IMAGES_DIR_FOR_SALIENCY, "NORMAL", image_filename),
-                    os.path.join(ORIGINAL_IMAGES_DIR_FOR_SALIENCY, image_filename) # If it's directly in the folder
+                    os.path.join(ORIGINAL_IMAGES_DIR_FOR_SALIENCY, image_filename) 
                 ]
                 image_path_for_saliency = None
                 for p_path in possible_paths:
                     if os.path.exists(p_path):
                         image_path_for_saliency = p_path
                         break
-                
-                if not image_path_for_saliency:
-                    # print(f"    Skipping image {image_filename}: Original file not found in common test locations.")
-                    continue
-
+                if not image_path_for_saliency: continue
                 input_tensor = utils.load_image_tensor(image_path_for_saliency, device)
-                if input_tensor is None:
-                    continue
-
-                expert_mask_np = expert_consensus_masks[image_filename] # Already (224,224) and binary
+                if input_tensor is None: continue
+                expert_mask_np = expert_consensus_masks[image_filename]
 
                 saliency_map_np = None
                 if sm_name == "Random":
                     saliency_map_np = utils.generate_random_map(size=MODEL_INPUT_SIZE)
-                elif sm_name in saliency_tools:
+                elif saliency_tool is not None:
                     try:
-                        saliency_map_np = saliency_tools[sm_name](input_tensor)
+                        saliency_map_np = saliency_tool(input_tensor)
                     except Exception as e:
-                        print(f"    Error generating {sm_name} for {image_filename} with {model_display_name}: {e}")
-                        saliency_map_np = None # Ensure it's None if error
+                        # print(f"    Error generating {sm_name} for {image_filename} with {os.path.basename(ckpt_path)}: {e}")
+                        saliency_map_np = None
                 
                 if saliency_map_np is not None:
-                    binarized_saliency_map = utils.binarize_saliency_map(saliency_map_np, method="fixed") # New
+                    binarized_saliency_map = utils.binarize_saliency_map(saliency_map_np, method="fixed", threshold_value=SALIENCY_BINARIZATION_THRESHOLD)
                     if binarized_saliency_map is not None:
                         iou = utils.calculate_iou(binarized_saliency_map, expert_mask_np)
-                        ious_for_current_pair.append(iou)
+                        ious_for_current_saliency_method.append(iou)
+            
+            # Clean up hooks right after using the saliency method
+            if saliency_tool and hasattr(saliency_tool, 'remove_hook'):
+                saliency_tool.remove_hook()
+                
+            # Ensure we have a valid value for the saliency method (even if it's 0)
+            avg_iou = np.mean(ious_for_current_saliency_method) if ious_for_current_saliency_method else 0.0
+            current_config_results[sm_name] = avg_iou
+        
+        all_results_data.append(current_config_results)
+        print(f"  Finished {os.path.basename(ckpt_path)}. Avg IoUs: CAM={current_config_results.get('CAM', float('nan')):.4f}, GradCAM={current_config_results.get('GradCAM', float('nan')):.4f}, Random={current_config_results.get('Random', float('nan')):.4f}")
 
-            avg_iou = np.mean(ious_for_current_pair) if ious_for_current_pair else np.nan
-            results_data.append({"Model": model_display_name, "SaliencyMethod": sm_name, "AvgIoU": avg_iou})
-            print(f"    {model_display_name} - {sm_name}: Avg IoU = {avg_iou:.4f} (over {len(ious_for_current_pair)} images)")
+    # 5. Create and Save Results Table (Granular)
+    results_df = pd.DataFrame(all_results_data)
 
-    # 5. Create and Print Results Table
-    results_df = pd.DataFrame(results_data)
-    pivot_table = results_df.pivot(index="Model", columns="SaliencyMethod", values="AvgIoU")
-    # Ensure correct column order
-    pivot_table = pivot_table.reindex(columns=saliency_methods, fill_value=np.nan) 
-    
-    print("\n--- Model-Experts Agreement (IoU) ---")
-    print(pivot_table.to_string(float_format="%.4f"))
+    # Define column order for the output CSV
+    output_columns = ['model', 'linear', 'pretrained'] + \
+                    [sm for sm in saliency_methods if sm in results_df.columns]
+    # Add any saliency methods that might have all NaNs but should still be columns
+    for sm_col in saliency_methods:
+        if sm_col not in results_df.columns:
+            results_df[sm_col] = np.nan # Add column with NaNs if it wasn't processed
+    results_df = results_df[output_columns] # Reorder/select columns
 
-    csv_name = f"evaluation/saliency_iou_results_{CONSENSUS_METHOD}_{RUN_NAME}_{SALIENCY_BINARIZATION_THRESHOLD}"
-    pivot_table.to_csv(csv_name)
-    print(f"\nResults saved to {csv_name}")
+    print("\n--- Granular Model-Experts Agreement (IoU) ---")
+    print(results_df.to_string(index=False, float_format="%.4f"))
+
+
+    csv_path_0 = f"saliency_iou_results_{CONSENSUS_TYPE}_{RUN_NAME}_{SALIENCY_BINARIZATION_THRESHOLD}.csv"
+
+    # Save to the specific CSV name expected by eval_corr.py
+    csv_output_path = os.path.join("evaluation", csv_path_0)
+    # The old csv_name based on CONSENSUS_METHOD etc. is replaced by a fixed name.
+    # csv_name = f"evaluation/saliency_iou_results_{CONSENSUS_METHOD}_{RUN_NAME}_{SALIENCY_BINARIZATION_THRESHOLD}" 
+    results_df.to_csv(csv_output_path, index=False, float_format="%.4f")
+    print(f"\nGranular results saved to {csv_output_path}")
 
 if __name__ == "__main__":
     main()

@@ -226,6 +226,9 @@ class VGG16Binary(nn.Module):
         weights = VGG16_Weights.DEFAULT if pretrained else None
         model = vgg16(weights=weights)
         
+        # Store linear flag as an attribute
+        self.linear = linear
+        
         # Backbone
         self.features = model.features  # [B, 512, H, W]
 
