@@ -110,6 +110,12 @@ class Datamodule(pl.LightningDataModule):
             generator=self.generator
         )
 
+        # Remove transforms for val
+        self.val_ds.transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),  
+        ])
+
         # Make the dataset balanced using weighted sampling
         ys = [self.data.targets[idx] for idx in self.train_ds.indices]
         class_weights = {y: 1.0 / count for y, count in Counter(ys).items()}    # measure the weight

@@ -1,0 +1,11 @@
+{
+    "all_annotations": 147,
+    "nonzero_perc": 0.06830179988662131,
+    "thank_you": "Carmen, Claudia, Diana, Francesca, Giovanni, Giovanni P., Lorenzo, Matilde, Sara, Simone P., Tommaso D.",
+    "valid_annotations": 126,
+    "unique_annotators": 11,
+    "avg_annotations_img": 2.625,
+    "avg_pairwise_iou": 0.2126149765313184,
+    "avg_pairwise_iou_random": 0.014509414880880584,
+    "iou_vs_random_p_value": 1.9750115274808612e-25
+}

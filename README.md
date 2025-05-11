@@ -72,7 +72,10 @@ Test all the models the `checkpoints/` directory (config is required only for ba
 ```
 $ python test.py path/to/config.json
 ```
-
+Chek on the annoations and measure agreement, plot histograms etc. It requires the correct folder structure. The results are saved to `/plots/` directory. Simply run:
+```
+$ python annotations.py
+```
 ### 1. Installation
 Install the necessary Python packages using `pip`:
 
