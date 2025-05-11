@@ -5,6 +5,7 @@ lightning
 torchmetrics>=0.7.0
 numpy
 pandas
+scipy
 opencv-python
 pillow
 matplotlib

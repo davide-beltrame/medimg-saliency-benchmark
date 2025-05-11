@@ -23,7 +23,7 @@ ORIGINAL_IMAGES_DIR_FOR_SALIENCY = "data/test" # Or wherever the original images
 
 MODEL_INPUT_SIZE = (224, 224) 
 
-SALIENCY_BINARIZATION_THRESHOLD = 0.8
+SALIENCY_BINARIZATION_THRESHOLD = 0.74
 
 INITIAL_PRE_CLOSING_KERNEL_SIZE = 3
 SOLIDITY_THRESHOLD = 0.6            
@@ -204,6 +204,7 @@ class BootstrapTestCallback(Callback):
         # Clear collected data for next potential test run
         self.all_preds.clear()
         self.all_targets.clear()
+
 
 def load_mask(mask_path, target_size=(224, 224)):
     """
@@ -574,8 +575,7 @@ def pointing_game(saliency_map, expert_mask, threshold_saliency=None):
         return 1.0
     else:
         return 0.0
-    
-CHECKPOINT_DIR = "./checkpoints"
+
 
 def find_checkpoint(model_short_key):
     """
