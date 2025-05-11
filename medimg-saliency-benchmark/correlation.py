@@ -10,7 +10,7 @@ PERFORMANCE_CSV_FILENAME = "results.csv" # Name of your performance CSV
 IOU_CSV_FILENAME = "saliency_iou_results_full_test_0.74.csv" # Expected name of the IoU results CSV
 PERFORMANCE_METRICS_TO_CORRELATE = ["accuracy", "precision", "recall", "auroc"]
 
-SALIENCY_IOU_COLUMN_FOR_CORRELATION = "GradCAM" # "CAM", "GradCAM", "Random"
+SALIENCY_IOU_COLUMN_FOR_CORRELATION = "CAM" # "CAM", "GradCAM", "Random", "RISE"
 
 MODEL_NAME_MAPPING = {
     "an": "AlexNet",
