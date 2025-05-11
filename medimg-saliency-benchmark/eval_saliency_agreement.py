@@ -15,6 +15,9 @@ from models import AlexNetBinary, VGG16Binary, ResNet50Binary, InceptionNetBinar
 import saliency
 from datamodule import Dataset as PnDataset 
 
+CONSENSUS_METHOD = "full"
+RUN_NAME = "test"
+
 CHECKPOINT_DIR = "./checkpoints"
 ANNOTATIONS_METADATA_PATH = "data/annotations/metadata.json"
 ANNOTATED_MASKS_DIR = "data/annotations/annotated"
@@ -22,7 +25,7 @@ ORIGINAL_IMAGES_DIR_FOR_SALIENCY = "data/test" # Or wherever the original images
 
 MODEL_INPUT_SIZE = (224, 224) 
 
-SALIENCY_BINARIZATION_THRESHOLD = 0.8
+SALIENCY_BINARIZATION_THRESHOLD = 0.74
 
 INITIAL_PRE_CLOSING_KERNEL_SIZE = 3
 SOLIDITY_THRESHOLD = 0.6            
@@ -34,7 +37,6 @@ CONSENSUS_POST_FILTER_TYPE = 'open' # Filter applied to individual processed mas
 CONSENSUS_POST_FILTER_KERNEL_SIZE = 3
 CONSENSUS_METHOD = 'intersection'
 
-# --- Helper Functions ---
 def get_device():
     """Gets the appropriate torch device."""
     if torch.backends.mps.is_available():
@@ -43,93 +45,6 @@ def get_device():
         return torch.device("cuda")
     else:
         return torch.device("cpu")
-
-def load_image_tensor(image_path, device):
-    """Loads an image and converts it to a tensor for model input."""
-    try:
-        img = Image.open(image_path).convert("RGB")
-        transform = transforms.Compose([
-            transforms.Resize(MODEL_INPUT_SIZE),
-            transforms.ToTensor() # Scales to [0,1]
-        ])
-        img_tensor = transform(img).unsqueeze(0) # Add batch dimension
-        return img_tensor.to(device)
-    except FileNotFoundError:
-        print(f"Warning: Image not found at {image_path}")
-        return None
-
-def find_checkpoint(model_short_key):
-    """
-    Finds a checkpoint file for a given model short key (e.g., "an", "vgg", "rn", "in").
-    If multiple checkpoints match (e.g., different training parameters or epochs),
-    it currently picks the first one found by glob, sorted alphabetically.
-    You might want to add logic to pick the "best" one if scores are in filenames.
-
-    Args:
-        model_short_key (str): The short key for the model (e.g., "an", "vgg", "rn", "in").
-
-    Returns:
-        str or None: Path to the checkpoint file, or None if not found.
-    """
-    if not model_short_key:
-        print("Warning: model_short_key is empty in find_checkpoint.")
-        return None
-        
-    # Construct the pattern, e.g., "an_*.ckpt"
-    # This assumes filenames like "an_True_True_0.05.ckpt"
-    ckpt_pattern = os.path.join(CHECKPOINT_DIR, f"{model_short_key}_*.ckpt")
-    ckpts = sorted(glob.glob(ckpt_pattern)) # Sort for consistency
-
-    if ckpts:        
-        selected_ckpt = ckpts[0] # Pick the first one (e.g., lowest loss if sorted by loss, or just first alphabetically)
-        print(f"Found checkpoint for '{model_short_key}': {selected_ckpt}")
-        return selected_ckpt
-    else:
-        if model_short_key == "vgg":
-            ckpt_pattern_alt = os.path.join(CHECKPOINT_DIR, "vgg*.ckpt")
-            ckpts_alt = sorted(glob.glob(ckpt_pattern_alt))
-            if ckpts_alt:
-                print(f"Found checkpoint for '{model_short_key}' using alternative pattern: {ckpts_alt[0]}")
-                return ckpts_alt[0]
-
-        print(f"Warning: No checkpoint found for model key '{model_short_key}' with pattern '{ckpt_pattern}' in {CHECKPOINT_DIR}")
-        return None
-
-def binarize_saliency_map(saliency_map_np, method="fixed", threshold_value=SALIENCY_BINARIZATION_THRESHOLD):
-    if saliency_map_np is None:
-        return None
-
-    saliency_map_to_process = saliency_map_np.copy()
-    if saliency_map_to_process.max() == saliency_map_to_process.min(): # Avoid issues with flat maps
-        return np.zeros_like(saliency_map_to_process, dtype=np.uint8)
-
-    # Normalize to 0-255 for Otsu if it's in [0,1]
-    if saliency_map_to_process.max() <= 1.0 and saliency_map_to_process.min() >=0.0:
-         saliency_map_uint8 = np.uint8(255 * saliency_map_to_process)
-    else: # If already potentially 0-255 or other range, ensure it's scaled if needed.
-          # For safety, let's rescale based on its own min/max if not in [0,1]
-         saliency_map_uint8 = np.uint8(255 * (saliency_map_to_process - saliency_map_to_process.min()) / (saliency_map_to_process.max() - saliency_map_to_process.min() + 1e-8))
-
-    if method == "otsu":
-        otsu_threshold, binarized_map = cv2.threshold(
-            saliency_map_uint8, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU
-        )
-        return (binarized_map / 255).astype(np.uint8)
-    elif method == "fixed":
-        return (saliency_map_np >= threshold_value).astype(np.uint8)
-    else:
-        print(f"Warning: Unknown binarization method '{method}'. Using fixed threshold.")
-        return (saliency_map_np >= threshold_value).astype(np.uint8)
-
-def generate_random_map(size=MODEL_INPUT_SIZE, grid_size=10):
-    """Generates a random saliency map as per table description."""
-    random_map_small = np.zeros((grid_size, grid_size), dtype=np.float32)
-    # Pick one random pixel in the small grid to activate
-    rand_x, rand_y = np.random.randint(0, grid_size, 2)
-    random_map_small[rand_y, rand_x] = 1.0 
-    # Upsample to full size
-    random_map_full = cv2.resize(random_map_small, size, interpolation=cv2.INTER_NEAREST)
-    return random_map_full # Already 0 or 1, effectively binarized
 
 def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_masks_dir):
     """
@@ -140,6 +55,7 @@ def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_mask
     consensus_masks_dict = {}
     unique_image_names = sorted(list(set(record['image_name'] for record in annotations_metadata_list)))
     
+    print(f"\nRunning {CONSENSUS_METHOD} consensus with threshold {SALIENCY_BINARIZATION_THRESHOLD} from {RUN_NAME} mode.")
     print(f"\nGenerating consensus masks for {len(unique_image_names)} unique images...")
     processed_count = 0
     for image_name in unique_image_names:
@@ -179,12 +95,9 @@ def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_mask
         if final_consensus is not None and final_consensus.sum() > 0:
             consensus_masks_dict[image_name] = final_consensus
             processed_count +=1
-        # else:
-            # print(f"  Skipping {image_name}: empty consensus mask.")
     print(f"Generated {processed_count} non-empty consensus masks for evaluation.")
     return consensus_masks_dict
 
-# --- Main Evaluation Logic ---
 def main():
     device = get_device()
     print(f"Using device: {device}")
@@ -230,11 +143,11 @@ def main():
     
     # Find checkpoints
     for model_name, config in model_configs.items():
-        config["ckpt_path"] = find_checkpoint(config["key_name"])
+        config["ckpt_path"] = utils.find_checkpoint(config["key_name"])
         if not config["ckpt_path"]:
             print(f"Could not find checkpoint for {model_name}, it will be skipped.")
 
-    saliency_methods = ["CAM", "GradCAM", "RISE", "Random"]
+    saliency_methods = ["CAM", "GradCAM", "Random"]
     results_data = [] # To store dicts for DataFrame
 
     # 4. Perform Evaluation
@@ -276,16 +189,6 @@ def main():
             print(f"  Processing Saliency Method: {sm_name}")
 
             for image_idx, image_filename in enumerate(evaluation_images):
-                # print(f"    Image {image_idx+1}/{len(evaluation_images)}: {image_filename}") # Verbose
-                
-                # Ensure original image path is correct.
-                # Assuming image_filename is like 'personX_bacteria_Y.jpeg' and it's in ORIGINAL_IMAGES_DIR_FOR_SALIENCY
-                # For example, if ORIGINAL_IMAGES_DIR_FOR_SALIENCY = "data/test/NORMAL" or "data/test/PNEUMONIA"
-                # We need to find the full path.
-                # For simplicity, let's assume evaluation_images are just filenames and we search for them.
-                # This part might need adjustment based on your exact image storage for the 50 test images.
-                
-                # Try to find the image in common pneumonia/normal test subdirs
                 possible_paths = [
                     os.path.join(ORIGINAL_IMAGES_DIR_FOR_SALIENCY, "PNEUMONIA", image_filename),
                     os.path.join(ORIGINAL_IMAGES_DIR_FOR_SALIENCY, "NORMAL", image_filename),
@@ -301,7 +204,7 @@ def main():
                     # print(f"    Skipping image {image_filename}: Original file not found in common test locations.")
                     continue
 
-                input_tensor = load_image_tensor(image_path_for_saliency, device)
+                input_tensor = utils.load_image_tensor(image_path_for_saliency, device)
                 if input_tensor is None:
                     continue
 
@@ -309,7 +212,7 @@ def main():
 
                 saliency_map_np = None
                 if sm_name == "Random":
-                    saliency_map_np = generate_random_map(size=MODEL_INPUT_SIZE)
+                    saliency_map_np = utils.generate_random_map(size=MODEL_INPUT_SIZE)
                 elif sm_name in saliency_tools:
                     try:
                         saliency_map_np = saliency_tools[sm_name](input_tensor)
@@ -318,13 +221,10 @@ def main():
                         saliency_map_np = None # Ensure it's None if error
                 
                 if saliency_map_np is not None:
-                    binarized_saliency_map = binarize_saliency_map(saliency_map_np, method="fixed") # New
+                    binarized_saliency_map = utils.binarize_saliency_map(saliency_map_np, method="fixed") # New
                     if binarized_saliency_map is not None:
                         iou = utils.calculate_iou(binarized_saliency_map, expert_mask_np)
                         ious_for_current_pair.append(iou)
-                    # else: print(f"    Binarized saliency map is None for {image_filename}, {sm_name}")
-                # else: print(f"    Saliency map is None for {image_filename}, {sm_name}")
-
 
             avg_iou = np.mean(ious_for_current_pair) if ious_for_current_pair else np.nan
             results_data.append({"Model": model_display_name, "SaliencyMethod": sm_name, "AvgIoU": avg_iou})
@@ -339,10 +239,9 @@ def main():
     print("\n--- Model-Experts Agreement (IoU) ---")
     print(pivot_table.to_string(float_format="%.4f"))
 
-    # Optionally save to CSV
-    pivot_table.to_csv("evaluation/saliency_iou_results.csv")
-    print("\nResults saved to evaluation/saliency_iou_results.csv")
+    csv_name = f"evaluation/saliency_iou_results_{CONSENSUS_METHOD}_{RUN_NAME}_{SALIENCY_BINARIZATION_THRESHOLD}"
+    pivot_table.to_csv(csv_name)
+    print(f"\nResults saved to {csv_name}")
 
 if __name__ == "__main__":
-    # Example: You might want to add argparse later to specify checkpoint dir, etc.
     main()
