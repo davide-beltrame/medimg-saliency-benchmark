@@ -1,0 +1,5 @@
+Performance Metric,Pearson Correlation,Pearson p-value,Spearman Correlation,Spearman p-value,N,Correlation with IoU
+Accuracy,0.4351,0.5649,0.4000,0.6000,4,"(0.435, 0.400)"
+Precision,0.2449,0.7551,-0.4000,0.6000,4,"(0.245, -0.400)"
+Recall,0.4760,0.5240,0.4000,0.6000,4,"(0.476, 0.400)"
+Auroc,0.6252,0.3748,0.8000,0.2000,4,"(0.625, 0.800)"
