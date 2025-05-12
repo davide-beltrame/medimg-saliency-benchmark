@@ -86,6 +86,7 @@ def main():
         model.model.to(device).eval()
 
         # Loop 2: Saliency Methods
+        saliency_map_np = None
         for sm_name in saliency_methods:
 
             # Skip models no appropriate for CAM
@@ -118,7 +119,6 @@ def main():
                 # From dict of annotatoins
                 expert_mask_np = expert_consensus_masks[image_filename]
 
-                saliency_map_np = None
                 if sm_name == "Random":
                     assert len(map_active_perc) > 0
                     assert saliency_map_np is not None
