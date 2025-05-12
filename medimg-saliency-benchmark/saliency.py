@@ -32,10 +32,18 @@ class CAM:
         # Register hooks on the last conv layer
         if isinstance(model, AlexNetBinary):
             target_layer = self.model.features[10]
-            self.weights = self.model.classifier.weight
+            # Check if classifier is a single layer or sequential
+            if isinstance(self.model.classifier, torch.nn.Linear):
+                self.weights = self.model.classifier.weight
+            else:
+                self.weights = self.model.classifier[-1].weight
         elif isinstance(model, VGG16Binary):
             target_layer = self.model.features[28] 
-            self.weights = self.model.classifier.weight
+            # Check if classifier is a single layer or sequential
+            if isinstance(self.model.classifier, torch.nn.Linear):
+                self.weights = self.model.classifier.weight
+            else:
+                self.weights = self.model.classifier[-1].weight
         elif isinstance(model, ResNet50Binary):
             target_layer = self.model.model.layer4[-1].conv3 
             self.weights = self.model.model.fc.weight

@@ -6,6 +6,6 @@
     "unique_annotators": 9,
     "avg_annotations_img": 2.148936170212766,
     "avg_pairwise_iou": 0.20798230792562208,
-    "avg_pairwise_iou_random": 0.02024373019599539,
-    "iou_vs_random_p_value": 3.986369927076716e-15
+    "avg_pairwise_iou_random": 0.016460193425141663,
+    "iou_vs_random_p_value": 1.3860792730217498e-15
 }
