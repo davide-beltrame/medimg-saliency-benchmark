@@ -10,9 +10,9 @@ import saliency
 CONSENSUS_TYPE = "full" # this is only used for the output file name
 RUN_NAME = "test" # this is only used for the output file name
 
-CHECKPOINT_DIR = "./checkpoints"
-ANNOTATIONS_METADATA_PATH = "data/annotations/metadata.json"
-ANNOTATED_MASKS_DIR = "data/annotations/annotated"
+CHECKPOINT_DIR = os.path.join(os.path.dirname(__file__), "checkpoints")
+ANNOTATIONS_METADATA_PATH = os.path.join(os.path.dirname(__file__),"data/annotations/metadata.json")
+ANNOTATED_MASKS_DIR = os.path.join(os.path.dirname(__file__),"data/annotations/annotated")
 ORIGINAL_IMAGES_DIR_FOR_SALIENCY = "data/test"
 
 MODEL_INPUT_SIZE = (224, 224) 

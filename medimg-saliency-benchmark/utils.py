@@ -16,9 +16,9 @@ import os
 import glob
 from torchvision import transforms
 
-CHECKPOINT_DIR = os.path.join(os.dirname(__file__), "checkpoints")
-ANNOTATIONS_METADATA_PATH = os.path.join(os.dirname(__file__),"data/annotations/metadata.json")
-ANNOTATED_MASKS_DIR = os.path.join(os.dirname(__file__),"data/annotations/annotated")
+CHECKPOINT_DIR = os.path.join(os.path.dirname(__file__), "checkpoints")
+ANNOTATIONS_METADATA_PATH = os.path.join(os.path.dirname(__file__),"data/annotations/metadata.json")
+ANNOTATED_MASKS_DIR = os.path.join(os.path.dirname(__file__),"data/annotations/annotated")
 ORIGINAL_IMAGES_DIR_FOR_SALIENCY = (
     "data/test"  # Or wherever the original images for saliency evaluation are
 )
