@@ -1,2 +1,18 @@
+<<<<<<< HEAD
 model,linear,pretrained,CAM_iou,CAM_pg,GradCAM_iou,GradCAM_pg,Random_iou,Random_pg,CAM_iou_pval,CAM_pg_pval,GradCAM_iou_pval,GradCAM_pg_pval
 an,True,True,0.0121,0.0286,0.0594,0.0857,0.0171,0.0000,0.4089,0.3244,0.0003,0.0831
+=======
+model,linear,pretrained,CAM,GradCAM,Random
+an,False,False,,0.0215,0.0236
+an,False,True,,0.0086,0.0157
+an,True,False,0.0047,0.0084,0.0239
+an,True,True,0.0212,0.0843,0.0328
+in,True,False,0.1358,0.1358,0.0148
+in,True,True,0.1277,0.1277,0.0240
+rn,True,False,0.0269,0.0297,0.0219
+rn,True,True,0.0584,0.0621,0.0291
+vgg,False,False,,0.0398,0.0231
+vgg,False,True,,0.0557,0.0239
+vgg,True,False,0.0106,0.0153,0.0168
+vgg,True,True,0.2078,0.1755,0.0196
+>>>>>>> 578cbf00d2b4457082f2b934ecd7dd76bd940f67
