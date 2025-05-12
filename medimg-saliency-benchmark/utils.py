@@ -564,7 +564,7 @@ def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_mask
     consensus_masks_dict = {}
     unique_image_names = sorted(list(set(record['image_name'] for record in annotations_metadata_list)))
     
-    print(f"\nRunning {CONSENSUS_METHOD} consensus with threshold {SALIENCY_BINARIZATION_THRESHOLD} from {RUN_NAME} mode.")
+    print(f"\nRunning {CONSENSUS_METHOD} consensus with threshold {SALIENCY_BINARIZATION_THRESHOLD}.")
     print(f"\nGenerating consensus masks for {len(unique_image_names)} unique images...")
     processed_count = 0
     for image_name in unique_image_names:
