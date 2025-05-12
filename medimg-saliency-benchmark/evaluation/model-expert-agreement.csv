@@ -1,13 +1,2 @@
-model,linear,pretrained,CAM_iou,GradCAM_pg,CAM_iou_pval,GradCAM_pg_pval
-an,False,False,,,,
-an,False,True,,,,
-an,True,False,,,,
-an,True,True,0.0212,0.1667,0.9704,0.0057
-in,True,False,,,,
-in,True,True,0.1277,0.2778,0.0000,0.0004
-rn,True,False,,,,
-rn,True,True,0.0584,0.3611,0.1887,0.0000
-vgg,False,False,,,,
-vgg,False,True,,,,
-vgg,True,False,,,,
-vgg,True,True,0.2078,0.1389,0.0000,0.0463
+model,linear,pretrained,CAM_iou,CAM_pg,GradCAM_iou,GradCAM_pg,Random_iou,Random_pg,CAM_iou_pval,CAM_pg_pval,GradCAM_iou_pval,GradCAM_pg_pval
+an,True,True,0.0121,0.0286,0.0594,0.0857,0.0212,0.0000,0.9868,0.1657,0.0017,0.0408

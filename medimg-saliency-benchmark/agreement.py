@@ -102,7 +102,9 @@ def main():
             'linear': parsed_info['linear'],
             'pretrained': parsed_info['pretrained']
         }
-
+        # Skip models
+        if not (current_config_results["linear"] and current_config_results["pretrained"]):
+            continue
         # Load the model checkpoint
         model = BaseCNN.load_from_checkpoint(ckpt_path, map_location=device)
         model.model.to(device).eval()
@@ -111,9 +113,6 @@ def main():
         saliency_map_np = None
         for sm_name in saliency_methods:
 
-            # Skip models no appropriate for CAM
-            if not (current_config_results["linear"] and current_config_results["pretrained"]):
-                continue
             # if sm_name == "CAM" and not current_config_results["linear"]:
             #     continue
             
@@ -240,17 +239,17 @@ def main():
 
     # Convert to df
     results_df = pd.DataFrame(all_results_data)
-
+    print(results_df.columns)
     # Define column order for the output CSV
-    output_columns = ['model', 'linear', 'pretrained']
-    output_columns += sorted(
-        [f"{sm}_{metric}" for sm, metric in zip(saliency_methods, metrics)]
-    )
-    output_columns += sorted(
-        [f"{sm}_{metric}_pval" for sm, metric in zip(saliency_methods, metrics)]
-    )
+    # output_columns = ['model', 'linear', 'pretrained']
+    # output_columns += sorted(
+    #     [f"{sm}_{metric}" for sm, metric in zip(saliency_methods, metrics)]
+    # )
+    # output_columns += sorted(
+    #     [f"{sm}_{metric}_pval" for sm, metric in zip(saliency_methods, metrics)]
+    # )
     
-    results_df = results_df[output_columns]
+    # results_df = results_df[output_columns]
     
     # Print & save results
     print(results_df.to_string(index=False, float_format="%.4f"))
