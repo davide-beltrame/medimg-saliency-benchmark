@@ -1,264 +1,387 @@
-import os
-import sys
-import glob
-import json
 import argparse
-import torch
+import os
+import json
+# import glob # No longer needed for checkpoint finding
 import numpy as np
-import cv2
 import pandas as pd
-from PIL import Image
-from torchvision import transforms
 import matplotlib.pyplot as plt
+import torch
 
-# --- Setup Project Path ---
-# Assuming threshold.py is in the project root (medimg-saliency-benchmark/)
-# and custom modules are in medimg-saliency-benchmark/medimg-saliency-benchmark/
-module_path = os.path.abspath(os.path.join('.', 'medimg-saliency-benchmark'))
-if module_path not in sys.path:
-    sys.path.append(module_path)
+# Assuming utils.py, models.py, saliency.py are in the same directory
+# or accessible via PYTHONPATH.
+import utils
+from models import BaseCNN
+import saliency
 
-try:
-    import utils # Your utils.py
-    from models import BaseCNN, AlexNetBinary, VGG16Binary, ResNet50Binary, InceptionNetBinary
-    import saliency # Your saliency.py
-except ImportError as e:
-    print(f"Error importing project modules: {e}")
-    print("Please ensure 'threshold.py' is in the project root and the "
-          "'medimg-saliency-benchmark/medimg-saliency-benchmark/' directory is in sys.path or accessible.")
-    sys.exit(1)
+# --- Configuration Section ---
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
-# --- Script Configuration (Defaults & Constants from Notebook Context) ---
-CHECKPOINT_DIR = "./checkpoints"
-ANNOTATIONS_METADATA_PATH = "data/annotations/metadata.json"
-ANNOTATED_MASKS_DIR = "data/annotations/annotated"
-ORIGINAL_IMAGES_DIR = "data/test" # Directory for original images for saliency
+CHECKPOINT_DIR = os.path.join(PROJECT_ROOT, "checkpoints")
+ANNOTATIONS_METADATA_PATH = os.path.join(PROJECT_ROOT, "data/annotations/metadata.json")
+ANNOTATED_MASKS_DIR = os.path.join(PROJECT_ROOT, "data/annotations/annotated")
+ORIGINAL_IMAGES_DIR_FOR_SALIENCY = os.path.join(PROJECT_ROOT, "data/test")
+PLOTS_DIR = os.path.join(PROJECT_ROOT, "plots")
 
 MODEL_INPUT_SIZE = (224, 224)
+#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#
+#_#  USER ACTION REQUIRED:                                                #_#
+#_#  Verify the exact name for Giovanni Casini in your metadata.json      #_#
+#_#  (case-insensitive). Update the GIOVANNI_NAME_PATTERN below.          #_#
+#_#  To find it, you can load metadata.json into a pandas DataFrame       #_#
+#_#  and print df['annotator_name'].unique()                              #_#
+#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#
+GIOVANNI_NAME_PATTERN = "giovanni casini" # <<< VERIFY AND EDIT THIS
+# --- End Configuration Section ---
 
-# Annotation Processing Parameters (from notebook context)
-INITIAL_PRE_CLOSING_KERNEL_SIZE = 3
-SOLIDITY_THRESHOLD = 0.6
-OUTLINE_FILL_CLOSING_KERNEL_SIZE = 7
-OUTLINE_EROSION_KERNEL_SIZE = 7
-FILLED_REGION_HOLE_CLOSING_KERNEL_SIZE = 5
-MIN_CONTOUR_AREA_FILTER = 20
-CONSENSUS_POST_FILTER_TYPE = 'open'
-CONSENSUS_POST_FILTER_KERNEL_SIZE = 3
-CONSENSUS_METHOD = 'intersection'
+def get_expert_consensus_masks_for_specific_annotators(
+    group_name,
+    filtered_annotations_metadata,
+    all_image_names_in_dataset # Currently unused, but good for context
+):
+    """
+    Generates consensus masks based on a pre-filtered list of annotations.
+    Returns a dictionary: {image_filename: consensus_mask_np}.
+    Only includes images where the final consensus mask is non-empty.
+    """
+    print(f"  Processing consensus for group: {group_name}")
+    expert_consensus_masks = {}
 
-OUTPUT_CSV_DIR = "evaluation"
-OUTPUT_PLOT_DIR = "plots" # For saving the threshold plot
+    unique_image_names_for_this_consensus = sorted(list(set(record['image_name'] for record in filtered_annotations_metadata)))
 
-# --- Helper to get device ---
-def get_device():
-    if torch.backends.mps.is_available(): return torch.device("mps")
-    if torch.cuda.is_available(): return torch.device("cuda")
-    return torch.device("cpu")
+    if not unique_image_names_for_this_consensus:
+        print(f"    No images found with annotations from group '{group_name}' after filtering.")
+        return {}
 
-def main(args):
-    device = get_device()
+    # print(f"    Found {len(filtered_annotations_metadata)} annotations for {len(unique_image_names_for_this_consensus)} unique images in group '{group_name}'.")
+
+    for image_name in unique_image_names_for_this_consensus:
+        raw_masks_tuples_for_image = utils.get_masks_for_image_from_metadata(
+            image_name,
+            filtered_annotations_metadata,
+            ANNOTATED_MASKS_DIR,
+            target_size=MODEL_INPUT_SIZE
+        )
+
+        if not raw_masks_tuples_for_image:
+            continue
+
+        individual_masks_for_image = [mask_tuple[0] for mask_tuple in raw_masks_tuples_for_image]
+
+        base_processed_masks = []
+        for idx, raw_mask in enumerate(individual_masks_for_image):
+            processed_mask_step1 = utils.process_circled_annotation(
+                raw_mask,
+                initial_closing_kernel_size=utils.INITIAL_PRE_CLOSING_KERNEL_SIZE,
+                solidity_threshold=utils.SOLIDITY_THRESHOLD,
+                outline_fill_closing_kernel_size=utils.OUTLINE_FILL_CLOSING_KERNEL_SIZE,
+                outline_erosion_kernel_size=utils.OUTLINE_EROSION_KERNEL_SIZE,
+                filled_region_hole_closing_kernel_size=utils.FILLED_REGION_HOLE_CLOSING_KERNEL_SIZE,
+                min_contour_area=utils.MIN_CONTOUR_AREA_FILTER
+            )
+            if processed_mask_step1 is None:
+                processed_mask_step1 = np.zeros(MODEL_INPUT_SIZE, dtype=np.uint8)
+            base_processed_masks.append(processed_mask_step1)
+
+        if not base_processed_masks:
+            continue
+
+        final_consensus = utils.create_consensus_mask(
+            base_processed_masks,
+            filter_type=utils.CONSENSUS_POST_FILTER_TYPE,
+            filter_kernel_size=utils.CONSENSUS_POST_FILTER_KERNEL_SIZE,
+            consensus_method=utils.CONSENSUS_METHOD
+        )
+
+        if final_consensus is not None and final_consensus.sum() > 0:
+            expert_consensus_masks[image_name] = final_consensus
+
+    print(f"    Generated {len(expert_consensus_masks)} non-empty consensus masks for group '{group_name}'.")
+    return expert_consensus_masks
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Evaluate IoU vs. Binarization Threshold for different expert consensus groups.")
+    parser.add_argument("model_key", type=str, help="Model short key ('an', 'vgg', 'rn', 'in').")
+    parser.add_argument("saliency_method", type=str, help="Saliency method (e.g., 'CAM', 'GradCAM').")
+    args = parser.parse_args()
+
+    os.makedirs(PLOTS_DIR, exist_ok=True)
+
+    device = utils.get_device()
     print(f"Using device: {device}")
 
-    # --- Configuration from Args ---
-    model_key_for_plot = args.model_key
-    saliency_method_for_plot = args.saliency_method
-    threshold_step = args.threshold_step
-    threshold_start = args.threshold_start
-    threshold_end = args.threshold_end
-    
-    # Generate thresholds based on args
-    # np.arange is exclusive for the end point, so add step to include it if desired
-    num_steps = int(round((threshold_end - threshold_start) / threshold_step)) + 1
-    thresholds_to_test = np.round(np.linspace(threshold_start, threshold_end, num_steps), 2)
+    # 1. Load Model
+    target_ckpt_path = None
+    model_key_lower = args.model_key.lower()
 
+    print(f"\nSelecting checkpoint for model key: '{model_key_lower}'")
 
-    print(f"Model for analysis: {model_key_for_plot.upper()}")
-    print(f"Saliency method: {saliency_method_for_plot}")
-    print(f"Testing thresholds from {threshold_start} to {threshold_end} with step {threshold_step}")
-    print(f"Thresholds: {thresholds_to_test}")
-
-
-    # 1. Load and Filter Annotations Metadata
-    try:
-        with open(ANNOTATIONS_METADATA_PATH, 'r') as f:
-            annotations_metadata_raw = json.load(f)
-        df_metadata_raw = pd.DataFrame(annotations_metadata_raw)
-        df_metadata_filtered = df_metadata_raw[~df_metadata_raw['annotator_name'].str.contains('test', case=False, na=False)].copy()
-        annotations_metadata = df_metadata_filtered.to_dict(orient='records')
-        if not annotations_metadata:
-            print("No annotations found after filtering. Exiting.")
-            return
-        print(f"Loaded and filtered annotations: {len(annotations_metadata)} records remaining.")
-    except Exception as e:
-        print(f"Error loading or filtering metadata: {e}")
-        return
-
-    # 2. Load Selected Model
-    loaded_model_for_plot = None
-    model_name_for_plot_title = model_key_for_plot.upper()
-    checkpoint_path_thresh = utils.find_checkpoint(model_key_for_plot) # Assumes CHECKPOINT_DIR is global in utils or here
-
-    if checkpoint_path_thresh:
-        try:
-            print(f"Loading model {model_key_for_plot} from {checkpoint_path_thresh}...")
-            pl_model_wrapper_thresh = BaseCNN.load_from_checkpoint(checkpoint_path_thresh, map_location=device)
-            loaded_model_for_plot = pl_model_wrapper_thresh.model
-            loaded_model_for_plot.to(device).eval()
-            print(f"Successfully loaded {model_name_for_plot_title} model.")
-        except Exception as e:
-            print(f"Error loading model {model_key_for_plot}: {e}")
-            return # Exit if model can't be loaded
+    if model_key_lower == "an":  # AlexNet
+        target_ckpt_path = os.path.join(CHECKPOINT_DIR, "an_True_True_0.05.ckpt") 
+    elif model_key_lower == "vgg":  # VGG16
+        target_ckpt_path = os.path.join(CHECKPOINT_DIR, "vgg_True_True_0.03.ckpt") 
+    elif model_key_lower == "rn":  # ResNet (e.g., ResNet50)
+        target_ckpt_path = os.path.join(CHECKPOINT_DIR, "rn_True_True_0.05.ckpt")
+    elif model_key_lower == "in":  # InceptionNetV1 (GoogLeNet)
+        target_ckpt_path = os.path.join(CHECKPOINT_DIR, "in_True_True_0.01.ckpt")
     else:
-        print(f"No checkpoint found for {model_key_for_plot}. Exiting.")
+        print(f"Error: Model key '{args.model_key}' is not recognized for hardcoded checkpoint selection.")
+        print(f"Supported keys: 'an' (AlexNet), 'vgg' (VGG), 'rn' (ResNet), 'in' (InceptionNet).")
+        print(f"Please add an entry for this key in the script or use a supported key.")
         return
 
-    # 3. Pre-calculate all necessary expert masks
-    expert_masks_cache = {}
-    images_for_analysis_all = sorted(list(set(record['image_name'] for record in annotations_metadata)))
-    print(f"Pre-calculating expert masks for {len(images_for_analysis_all)} images...")
+    if "YOUR_" in target_ckpt_path: # Basic check if placeholder is still there
+        print(f"Error: Placeholder checkpoint filename found for model '{args.model_key}'.")
+        print(f"Please edit threshold.py and replace '{os.path.basename(target_ckpt_path)}' with your actual checkpoint file.")
+        return
 
-    for image_name in images_for_analysis_all:
-        raw_masks_tuples = utils.get_masks_for_image_from_metadata(
-            image_name, annotations_metadata, ANNOTATED_MASKS_DIR, target_size=MODEL_INPUT_SIZE
-        )
-        if not raw_masks_tuples: continue
+    if not os.path.exists(target_ckpt_path):
+        print(f"Error: Specified checkpoint file does not exist: {target_ckpt_path}")
+        print(f"Please ensure the filename and path are correct for model '{args.model_key}'.")
+        return
 
-        current_image_cache = {}
-        # Full Consensus
-        processed_masks_list_full = [
-            (utils.process_circled_annotation(rm, INITIAL_PRE_CLOSING_KERNEL_SIZE, SOLIDITY_THRESHOLD, OUTLINE_FILL_CLOSING_KERNEL_SIZE, OUTLINE_EROSION_KERNEL_SIZE, FILLED_REGION_HOLE_CLOSING_KERNEL_SIZE, MIN_CONTOUR_AREA_FILTER)
-             if rm is not None else np.zeros(MODEL_INPUT_SIZE, dtype=np.uint8))
-            for rm, an in raw_masks_tuples
-        ]
-        consensus_full_result = utils.create_consensus_mask(processed_masks_list_full, CONSENSUS_POST_FILTER_TYPE, CONSENSUS_POST_FILTER_KERNEL_SIZE, CONSENSUS_METHOD)
-        current_image_cache['full'] = consensus_full_result if consensus_full_result is not None else np.zeros(MODEL_INPUT_SIZE, dtype=np.uint8)
+    print(f"Attempting to load specified checkpoint: {os.path.basename(target_ckpt_path)}")
+    
+    model_checkpoint = BaseCNN.load_from_checkpoint(target_ckpt_path, map_location=device)
+    model_to_explain = model_checkpoint.model 
+    model_to_explain.to(device).eval()
+    
+    print(f"Successfully loaded model: {type(model_to_explain).__name__} from {os.path.basename(target_ckpt_path)}")
 
-        # Giovanni's mask
-        giovanni_mask = np.zeros(MODEL_INPUT_SIZE, dtype=np.uint8)
-        for rm, an in raw_masks_tuples:
-            if "giovanni" in an.lower():
-                processed_gio = utils.process_circled_annotation(rm, INITIAL_PRE_CLOSING_KERNEL_SIZE, SOLIDITY_THRESHOLD, OUTLINE_FILL_CLOSING_KERNEL_SIZE, OUTLINE_EROSION_KERNEL_SIZE, FILLED_REGION_HOLE_CLOSING_KERNEL_SIZE, MIN_CONTOUR_AREA_FILTER)
-                if processed_gio is not None and processed_gio.sum() > 0: giovanni_mask = processed_gio
-                break
-        current_image_cache['gio'] = giovanni_mask
-        
-        # No Giovanni Consensus
-        base_processed_no_gio = []
-        annotators_no_gio_present = False
-        for rm, an in raw_masks_tuples:
-            if "giovanni" not in an.lower():
-                annotators_no_gio_present = True
-                processed_mask_no_gio = utils.process_circled_annotation(rm, INITIAL_PRE_CLOSING_KERNEL_SIZE, SOLIDITY_THRESHOLD, OUTLINE_FILL_CLOSING_KERNEL_SIZE, OUTLINE_EROSION_KERNEL_SIZE, FILLED_REGION_HOLE_CLOSING_KERNEL_SIZE, MIN_CONTOUR_AREA_FILTER)
-                base_processed_no_gio.append(processed_mask_no_gio if processed_mask_no_gio is not None else np.zeros(MODEL_INPUT_SIZE, dtype=np.uint8))
-        
-        consensus_no_gio_result = np.zeros(MODEL_INPUT_SIZE, dtype=np.uint8)
-        if annotators_no_gio_present and base_processed_no_gio:
-            temp_no_gio = utils.create_consensus_mask(base_processed_no_gio, CONSENSUS_POST_FILTER_TYPE, CONSENSUS_POST_FILTER_KERNEL_SIZE, CONSENSUS_METHOD)
-            if temp_no_gio is not None: consensus_no_gio_result = temp_no_gio
-        current_image_cache['no_gio'] = consensus_no_gio_result
-        
-        expert_masks_cache[image_name] = current_image_cache
-    print(f"Cached expert masks for {len(expert_masks_cache)} images.")
-
-    # 4. Initialize Saliency Tool
+    # 2. Initialize Saliency Tool
     saliency_tool = None
-    if saliency_method_for_plot == "CAM":
-        if hasattr(saliency, 'CAM') and isinstance(loaded_model_for_plot, (AlexNetBinary, VGG16Binary, ResNet50Binary, InceptionNetBinary)):
-            saliency_tool = saliency.CAM(loaded_model_for_plot)
-    elif saliency_method_for_plot == "GradCAM":
-        if hasattr(saliency, 'GradCAM'): saliency_tool = saliency.GradCAM(loaded_model_for_plot)
-    elif saliency_method_for_plot == "RISE": # Assuming RISE params are fixed for this script or added to args
-        if hasattr(saliency, 'RISE'): saliency_tool = saliency.RISE(loaded_model_for_plot, num_masks=200, scale_factor=16) # Example params
+    saliency_method_upper = args.saliency_method.upper()
 
-    if not saliency_tool:
-        print(f"Could not initialize saliency tool {saliency_method_for_plot}. Aborting.")
-        if hasattr(saliency_tool, 'remove_hook'): saliency_tool.remove_hook() # Clean up if partially initialized
+    if saliency_method_upper == "CAM":
+        if hasattr(model_to_explain, 'linear') and not model_to_explain.linear:
+            print(f"Warning: CAM selected, and the loaded model '{type(model_to_explain).__name__}' has its 'linear' attribute set to False.")
+            print(f"         CAM may not function correctly or may produce poor results with this model configuration.")
+        elif not hasattr(model_to_explain, 'linear') and model_key_lower not in ['rn', 'in']:
+            print(f"Warning: CAM selected for model '{type(model_to_explain).__name__}'. This model type does not have an explicit 'linear' attribute for quick compatibility check.")
+            print(f"         Ensure its architecture (e.g., ending with GAP and a Linear layer) is suitable for CAM.")
+        
+        try:
+            saliency_tool = saliency.CAM(model_to_explain)
+        except Exception as e:
+            print(f"Error initializing CAM: {e}")
+            print(f"Ensure the loaded model ('{type(model_to_explain).__name__}') and its checkpoint ('{os.path.basename(target_ckpt_path)}') are compatible with CAM.")
+            return
+    elif saliency_method_upper == "GRADCAM":
+        saliency_tool = saliency.GradCAM(model_to_explain)
+    else:
+        print(f"Error: Saliency method '{args.saliency_method}' not supported by this script.")
         return
+    print(f"Initialized saliency method: {saliency_method_upper}")
 
-    # 5. Loop through thresholds and calculate IoUs
-    results_for_csv = []
-    print(f"\nCalculating IoUs for various thresholds...")
-    for threshold_val in thresholds_to_test:
-        print(f"  Testing threshold: {threshold_val:.2f}")
-        ious_full, ious_gio, ious_no_gio = [], [], []
+    # 3. Load and Prepare Annotation Metadata
+    if not os.path.exists(ANNOTATIONS_METADATA_PATH):
+        print(f"Error: Annotations metadata file not found at {ANNOTATIONS_METADATA_PATH}")
+        return
+        
+    with open(ANNOTATIONS_METADATA_PATH, 'r') as f:
+        annotations_metadata_raw = json.load(f)
+    
+    df_metadata_all = pd.DataFrame(annotations_metadata_raw)
+    df_metadata_no_test = df_metadata_all[
+        ~df_metadata_all['annotator_name'].str.contains('test', case=False, na=False)
+    ].copy()
+    annotations_non_test_list = df_metadata_no_test.to_dict(orient='records')
+    
+    print(f"\nTotal non-test annotations loaded: {len(annotations_non_test_list)}")
+    
+    # --- For Debugging GIOVANNI_NAME_PATTERN ---
+    # Uncomment the following lines to print all unique lowercased annotator names
+    # from your non-test metadata. This will help you find the correct pattern for Giovanni.
+    # ----
+    # if annotations_non_test_list:
+    #     unique_names_in_data = sorted(list(set(r.get('annotator_name', '').lower() for r in annotations_non_test_list if r.get('annotator_name'))))
+    #     print(f"DEBUG: Unique lowercased annotator names in non-test data: {unique_names_in_data}")
+    # else:
+    #     print("DEBUG: No non-test annotations found to extract unique names.")
+    # ----
 
-        for image_name, masks in expert_masks_cache.items():
-            original_image_path = None
-            possible_paths = [
-                os.path.join(ORIGINAL_IMAGES_DIR, "PNEUMONIA", image_name),
-                os.path.join(ORIGINAL_IMAGES_DIR, "NORMAL", image_name),
-                os.path.join(ORIGINAL_IMAGES_DIR, image_name)
-            ]
-            for p_path in possible_paths:
-                if os.path.exists(p_path): original_image_path = p_path; break
+    annotations_full_expert = annotations_non_test_list
+
+    initial_gio_annotations = [
+        r for r in annotations_non_test_list if GIOVANNI_NAME_PATTERN in r.get('annotator_name', '').lower()
+    ]
+    if not initial_gio_annotations:
+        print(f"CRITICAL: No annotator names in the (non-test) metadata matched the pattern '{GIOVANNI_NAME_PATTERN}'. 'Giovanni Only' curve will be empty or missing. Please verify the pattern against actual annotator names in metadata.json.")
+    else:
+        print(f"Found {len(initial_gio_annotations)} raw annotations potentially matching Giovanni ('{GIOVANNI_NAME_PATTERN}').")
+    annotations_giovanni_only = initial_gio_annotations
+    
+    annotations_no_giovanni = [
+        r for r in annotations_non_test_list if GIOVANNI_NAME_PATTERN not in r.get('annotator_name', '').lower()
+    ]
+
+    # 4. Get the three types of expert consensus masks
+    print("\nGenerating consensus masks...")
+    consensus_masks_full = get_expert_consensus_masks_for_specific_annotators("Full Expert", annotations_full_expert, [])
+    
+    consensus_masks_gio = {}
+    if annotations_giovanni_only: 
+        consensus_masks_gio = get_expert_consensus_masks_for_specific_annotators("Giovanni Only", annotations_giovanni_only, [])
+    else:
+        print("  Skipping Giovanni Only consensus mask generation as no raw annotations were found for the pattern.")
+    
+    consensus_masks_no_gio = get_expert_consensus_masks_for_specific_annotators("No Giovanni", annotations_no_giovanni, [])
+    
+    all_evaluation_image_names = sorted(list(set(r['image_name'] for r in annotations_non_test_list)))
+    print(f"\nWill attempt to generate saliency maps for up to {len(all_evaluation_image_names)} unique images.")
+
+    # 5. Iterate through thresholds and calculate IoUs
+    thresholds_arr = np.round(np.arange(0.02, 0.91, 0.02), 2)
+    
+    iou_results_full = {t: [] for t in thresholds_arr}
+    iou_results_gio = {t: [] for t in thresholds_arr}
+    iou_results_no_gio = {t: [] for t in thresholds_arr}
+    
+    images_contributing_full = set()
+    images_contributing_gio = set()
+    images_contributing_no_gio = set()
+
+    print(f"Starting IoU calculation across {len(thresholds_arr)} thresholds for {len(all_evaluation_image_names)} images...")
+    for img_idx, image_filename in enumerate(all_evaluation_image_names):
+        image_path_pneumonia = os.path.join(ORIGINAL_IMAGES_DIR_FOR_SALIENCY, "PNEUMONIA", image_filename)
+        image_path_normal = os.path.join(ORIGINAL_IMAGES_DIR_FOR_SALIENCY, "NORMAL", image_filename)
+        
+        actual_image_path = None
+        if os.path.exists(image_path_pneumonia):
+            actual_image_path = image_path_pneumonia
+        elif os.path.exists(image_path_normal):
+            actual_image_path = image_path_normal
+        else:
+            continue
+
+        input_tensor = utils.load_image_tensor(actual_image_path, device)
+        if input_tensor is None:
+            continue
+
+        try:
+            saliency_map_np = saliency_tool(input_tensor) 
+        except Exception as e:
+            # print(f"  Error generating saliency map for {image_filename} with {saliency_method_upper}: {e}. Skipping.")
+            continue
             
-            if not original_image_path: continue
-            input_tensor = utils.load_image_tensor(original_image_path, device)
-            if input_tensor is None: continue
+        if saliency_map_np is None:
+            continue
+        if saliency_map_np.shape != MODEL_INPUT_SIZE: 
+             saliency_map_np = utils.cv2.resize(saliency_map_np, MODEL_INPUT_SIZE, interpolation=utils.cv2.INTER_LINEAR)
 
-            try:
-                saliency_map_np = saliency_tool(input_tensor)
-            except Exception: continue # Skip if saliency generation fails
-            if saliency_map_np is None: continue
+        # --- Full Expert Consensus ---
+        if image_filename in consensus_masks_full:
+            expert_mask_full = consensus_masks_full[image_filename]
+            images_contributing_full.add(image_filename)
+            for t in thresholds_arr:
+                binarized_saliency = utils.binarize_saliency_map(saliency_map_np, threshold_value=t)
+                iou = utils.calculate_iou(binarized_saliency, expert_mask_full)
+                iou_results_full[t].append(iou)
 
-            bin_saliency = utils.binarize_saliency_map(saliency_map_np, threshold_value=threshold_val)
-            if bin_saliency is None: continue
+        # --- Giovanni Only Consensus ---
+        if image_filename in consensus_masks_gio: 
+            expert_mask_gio = consensus_masks_gio[image_filename]
+            images_contributing_gio.add(image_filename)
+            for t in thresholds_arr:
+                binarized_saliency = utils.binarize_saliency_map(saliency_map_np, threshold_value=t)
+                iou = utils.calculate_iou(binarized_saliency, expert_mask_gio)
+                iou_results_gio[t].append(iou)
+        
+        # --- No Giovanni Consensus ---
+        if image_filename in consensus_masks_no_gio:
+            expert_mask_no_gio = consensus_masks_no_gio[image_filename]
+            images_contributing_no_gio.add(image_filename)
+            for t in thresholds_arr:
+                binarized_saliency = utils.binarize_saliency_map(saliency_map_np, threshold_value=t)
+                iou = utils.calculate_iou(binarized_saliency, expert_mask_no_gio)
+                iou_results_no_gio[t].append(iou)
+        
+    if hasattr(saliency_tool, 'remove_hook') and callable(saliency_tool.remove_hook):
+         saliency_tool.remove_hook()
+    if hasattr(saliency_tool, 'remove_hooks') and callable(saliency_tool.remove_hooks): 
+         saliency_tool.remove_hooks()
 
-            if masks['full'].sum() > 0: ious_full.append(utils.calculate_iou(bin_saliency, masks['full']))
-            if masks['gio'].sum() > 0: ious_gio.append(utils.calculate_iou(bin_saliency, masks['gio']))
-            if masks['no_gio'].sum() > 0: ious_no_gio.append(utils.calculate_iou(bin_saliency, masks['no_gio']))
+    # 6. Aggregate results and create DataFrame
+    avg_iou_full = [np.mean(iou_results_full[t]) if iou_results_full[t] else np.nan for t in thresholds_arr]
+    avg_iou_gio = [np.mean(iou_results_gio[t]) if iou_results_gio[t] else np.nan for t in thresholds_arr]
+    avg_iou_no_gio = [np.mean(iou_results_no_gio[t]) if iou_results_no_gio[t] else np.nan for t in thresholds_arr]
 
-        results_for_csv.append({
-            'threshold': threshold_val,
-            'iou_vs_full_consensus': np.nanmean(ious_full) if ious_full else np.nan,
-            'iou_vs_giovanni_only': np.nanmean(ious_gio) if ious_gio else np.nan,
-            'iou_vs_consensus_no_giovanni': np.nanmean(ious_no_gio) if ious_no_gio else np.nan,
-            'n_full_consensus': len(ious_full),
-            'n_giovanni': len(ious_gio),
-            'n_no_giovanni': len(ious_no_gio)
-        })
+    num_images_full = len(images_contributing_full)
+    num_images_gio = len(images_contributing_gio)
+    num_images_no_gio = len(images_contributing_no_gio)
+
+    print(f"\nNumber of unique images contributing to IoU calculation (n):")
+    print(f"  IoU vs Full Consensus: n={num_images_full}")
+    print(f"  IoU vs Giovanni Only: n={num_images_gio}")
+    print(f"  IoU vs Consensus (No Gio): n={num_images_no_gio}")
+
+    df_columns = {'Saliency Binarization Threshold': thresholds_arr}
+    if num_images_full > 0 : df_columns[f'IoU vs Full Consensus (n={num_images_full})'] = avg_iou_full
+    if num_images_gio > 0 : df_columns[f'IoU vs Giovanni Only (n={num_images_gio})'] = avg_iou_gio
+    if num_images_no_gio > 0 : df_columns[f'IoU vs Consensus (No Gio) (n={num_images_no_gio})'] = avg_iou_no_gio
+    results_df = pd.DataFrame(df_columns)
+
+    # 7. Save CSV
+    csv_filename = f"iou_vs_threshold_{args.model_key.lower()}_{saliency_method_upper.lower()}.csv"
+    csv_path = os.path.join(PLOTS_DIR, csv_filename)
+    results_df.to_csv(csv_path, index=False, float_format="%.4f")
+    print(f"\nResults saved to {csv_path}")
+
+    # 8. Analyzing Best Thresholds
+    print("\n--- Analyzing Best Thresholds from Calculated Data ---")
+    col_full = f'IoU vs Full Consensus (n={num_images_full})'
+    if num_images_full > 0 and col_full in results_df.columns and not results_df[col_full].isnull().all():
+        best_idx_full = results_df[col_full].idxmax()
+        best_thresh_full = results_df['Saliency Binarization Threshold'].loc[best_idx_full]
+        max_iou_full = results_df[col_full].loc[best_idx_full]
+        print(f"For 'Full Expert Consensus': Best Threshold = {best_thresh_full:.4f}, Max Avg. IoU = {max_iou_full:.4f}")
     
-    if hasattr(saliency_tool, 'remove_hook'): saliency_tool.remove_hook() # Cleanup hook
+    col_gio = f'IoU vs Giovanni Only (n={num_images_gio})'
+    if num_images_gio > 0 and col_gio in results_df.columns and not results_df[col_gio].isnull().all():
+        best_idx_gio = results_df[col_gio].idxmax()
+        best_thresh_gio = results_df['Saliency Binarization Threshold'].loc[best_idx_gio]
+        max_iou_gio = results_df[col_gio].loc[best_idx_gio]
+        print(f"For 'Giovanni Only Consensus': Best Threshold = {best_thresh_gio:.4f}, Max Avg. IoU = {max_iou_gio:.4f}")
 
-    # 6. Create DataFrame, Plot, and Save CSV
-    df_thresh_results = pd.DataFrame(results_for_csv)
+    col_no_gio = f'IoU vs Consensus (No Gio) (n={num_images_no_gio})'
+    if num_images_no_gio > 0 and col_no_gio in results_df.columns and not results_df[col_no_gio].isnull().all():
+        best_idx_no_gio = results_df[col_no_gio].idxmax()
+        best_thresh_no_gio = results_df['Saliency Binarization Threshold'].loc[best_idx_no_gio]
+        max_iou_no_gio = results_df[col_no_gio].loc[best_idx_no_gio]
+        print(f"For 'Consensus (No Giovanni)': Best Threshold = {best_thresh_no_gio:.4f}, Max Avg. IoU = {max_iou_no_gio:.4f}")
 
-    plt.figure(figsize=(12, 7))
-    plt.plot(df_thresh_results['threshold'], df_thresh_results['iou_vs_full_consensus'], marker='o', label=f'IoU vs Full Consensus (n~{df_thresh_results["n_full_consensus"].mean():.0f})')
-    plt.plot(df_thresh_results['threshold'], df_thresh_results['iou_vs_giovanni_only'], marker='s', label=f'IoU vs Giovanni Only (n~{df_thresh_results["n_giovanni"].mean():.0f})')
-    plt.plot(df_thresh_results['threshold'], df_thresh_results['iou_vs_consensus_no_giovanni'], marker='^', label=f'IoU vs Consensus (No Gio) (n~{df_thresh_results["n_no_giovanni"].mean():.0f})')
+    # 9. Generate and Save Plot
+    plt.style.use('seaborn-v0_8-whitegrid') 
+    plt.figure(figsize=(10, 6))
     
-    plt.xlabel("Saliency Binarization Threshold")
-    plt.ylabel("Average IoU")
-    plt.title(f"IoU vs. Binarization Threshold ({saliency_method_for_plot} on {model_name_for_plot_title})")
-    plt.legend()
+    plotted_anything = False
+    if num_images_full > 0 and col_full in results_df.columns and not results_df[col_full].isnull().all(): # check for all NaNs
+        plt.plot(results_df['Saliency Binarization Threshold'], results_df[col_full], marker='o', linestyle='-', label=col_full)
+        plotted_anything = True
+    if num_images_gio > 0 and col_gio in results_df.columns and not results_df[col_gio].isnull().all(): # check for all NaNs
+        plt.plot(results_df['Saliency Binarization Threshold'], results_df[col_gio], marker='s', linestyle='-', label=col_gio)
+        plotted_anything = True
+    if num_images_no_gio > 0 and col_no_gio in results_df.columns and not results_df[col_no_gio].isnull().all(): # check for all NaNs
+        plt.plot(results_df['Saliency Binarization Threshold'], results_df[col_no_gio], marker='^', linestyle='-', label=col_no_gio)
+        plotted_anything = True
+
+    plt.title(f'IoU vs. Binarization Threshold ({saliency_method_upper} on {args.model_key.upper()})')
+    plt.xlabel('Saliency Binarization Threshold')
+    plt.ylabel('Average IoU')
+    
     plt.grid(True)
-    plt.xticks(np.round(np.linspace(min(thresholds_to_test), max(thresholds_to_test), 10),2))
-    plt.ylim(bottom=0)
-    
-    # Save plot
-    os.makedirs(OUTPUT_PLOT_DIR, exist_ok=True)
-    plot_filename = f"iou_vs_threshold_plot_{model_key_for_plot}_{saliency_method_for_plot}.png"
-    plot_path = os.path.join(OUTPUT_PLOT_DIR, plot_filename)
-    plt.savefig(plot_path, bbox_inches='tight', dpi=150)
-    print(f"Plot saved to: {plot_path}")
-    plt.show()
+    if plotted_anything:
+        plt.legend()
+    else:
+        plt.text(0.5, 0.5, "No data to plot for any group.", horizontalalignment='center', verticalalignment='center', transform=plt.gca().transAxes)
+        
+    plt.tight_layout()
 
-    # Save CSV
-    os.makedirs(OUTPUT_CSV_DIR, exist_ok=True)
-    csv_filename = f"iou_vs_threshold_{model_key_for_plot}_{saliency_method_for_plot}.csv"
-    csv_path = os.path.join(OUTPUT_CSV_DIR, csv_filename)
-    df_thresh_results.to_csv(csv_path, index=False, float_format='%.4f')
-    print(f"Threshold analysis results saved to: {csv_path}")
+    plot_filename = f"iou_vs_threshold_{args.model_key.lower()}_{saliency_method_upper.lower()}.png"
+    plot_path = os.path.join(PLOTS_DIR, plot_filename)
+    plt.savefig(plot_path)
+    print(f"Plot saved to {plot_path}")
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Analyze IoU vs. Saliency Binarization Threshold.")
-    parser.add_argument("model_key", type=str, choices=["an", "vgg", "rn", "in"], help="Model key (e.g., 'vgg', 'an').")
-    parser.add_argument("saliency_method", type=str, choices=["CAM", "GradCAM", "RISE"], help="Saliency method to use.")
-    parser.add_argument("--threshold_start", type=float, default=0.02, help="Start of threshold range.")
-    parser.add_argument("--threshold_end", type=float, default=0.90, help="End of threshold range.")
-    parser.add_argument("--threshold_step", type=float, default=0.02, help="Step for threshold range.")
-    
-    cli_args = parser.parse_args()
-    main(cli_args)
+    main()
