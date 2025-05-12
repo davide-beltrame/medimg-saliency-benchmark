@@ -10,7 +10,6 @@ import utils
 from models import BaseCNN
 import saliency
 
-# --- Configuration Section ---
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 CHECKPOINT_DIR = os.path.join(PROJECT_ROOT, "checkpoints")
@@ -21,20 +20,13 @@ PLOTS_DIR = os.path.join(PROJECT_ROOT, "plots")
 
 MODEL_INPUT_SIZE = (224, 224)
 
-#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#
-#_#  USER ACTION REQUIRED:                                                #_#
-#_#  1. Fill in the correct checkpoint filenames below.                   #_#
-#_#  2. Verify GIOVANNI_NAME_PATTERN.                                     #_#
-#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#_#
-
 MODEL_CONFIGS = {
-    "an": "an_True_True_0.05.ckpt",    # AlexNet - <<< VERIFY/EDIT THIS FILENAME
-    "vgg": "vgg_True_True_0.03.ckpt",   # VGG16 - <<< VERIFY/EDIT THIS FILENAME
-    "rn": "rn_True_True_0.05.ckpt",     # ResNet50 - <<< VERIFY/EDIT THIS FILENAME
-    "in": "in_True_True_0.01.ckpt"      # InceptionNetV1 - <<< VERIFY/EDIT THIS FILENAME
+    "an": "an_True_True_0.05.ckpt",    
+    "vgg": "vgg_True_True_0.03.ckpt",  
+    "rn": "rn_True_True_0.05.ckpt",   
+    "in": "in_True_True_0.01.ckpt"      
 }
-GIOVANNI_NAME_PATTERN = "giovanni p" # <<< VERIFY AND EDIT THIS
-# --- End Configuration Section ---
+GIOVANNI_NAME_PATTERN = "giovanni p" 
 
 def get_expert_consensus_masks_for_specific_annotators(
     group_name,
@@ -117,11 +109,6 @@ def main():
     annotations_non_test_list = df_metadata_no_test.to_dict(orient='records')
     print(f"\nTotal non-test annotations loaded: {len(annotations_non_test_list)}")
 
-    # Debug unique names to help user find GIOVANNI_NAME_PATTERN
-    # if annotations_non_test_list:
-    #     unique_names = sorted(list(set(r.get('annotator_name','').lower() for r in annotations_non_test_list if r.get('annotator_name'))))
-    #     print(f"DEBUG: Unique lowercased annotator names in non-test data: {unique_names}")
-
     annotations_full_expert = annotations_non_test_list
     initial_gio_annotations = [r for r in annotations_non_test_list if GIOVANNI_NAME_PATTERN in r.get('annotator_name', '').lower()]
     if not initial_gio_annotations:
@@ -149,7 +136,6 @@ def main():
     # To store 'n' for legend and best threshold analysis
     n_values_for_legend = {} 
     best_threshold_details = []
-
 
     # 3. Loop through each model configuration
     for model_key, ckpt_filename_part in MODEL_CONFIGS.items():
