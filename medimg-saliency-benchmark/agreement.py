@@ -215,6 +215,9 @@ def main():
                 colname = f"{sm_name}_{metric}"
                 if colname not in current_config_results:
                     continue
+                # Perform statistical test to get p-value
+                # H_0: iou is not greater than random
+                # --> p < 0.05 --> iou is greater than random iou
                 t_stat, p_value = stats.mannwhitneyu(
                     current_config_results[f"{sm_name}_{metric}"],
                     current_config_results[f"Random_{metric}"],

@@ -252,7 +252,8 @@ def compute_cross_ious(df):
     plt.savefig(os.path.join(PATH_TO_PLOTS, "random_mask.png"))
     
     # Perform statistical test to get p-value
-    # Using paired t-test since we have the same pairs for both real and random masks
+    # H_0: iou is not greater than random
+    # --> p < 0.05 --> iou is greater than random iou
     t_stat, p_value = stats.mannwhitneyu(
         results.iou,
         results_random.iou,
