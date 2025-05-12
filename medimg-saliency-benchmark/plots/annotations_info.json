@@ -1,15 +1,4 @@
 {
-<<<<<<< HEAD
-    "all_annotations": 147,
-    "nonzero_perc": 0.06830179988662131,
-    "thank_you": "Carmen, Claudia, Diana, Francesca, Giovanni, Giovanni P., Lorenzo, Matilde, Sara, Simone P., Tommaso D.",
-    "valid_annotations": 126,
-    "unique_annotators": 11,
-    "avg_annotations_img": 2.625,
-    "avg_pairwise_iou": 0.2126149765313184,
-    "avg_pairwise_iou_random": 0.016448472506333585,
-    "iou_vs_random_p_value": 3.0361986480247207e-25
-=======
     "all_annotations": 120,
     "nonzero_perc": 0.07558976560921397,
     "thank_you": "Claudia, Diana, Francesca, Giovanni P., Lorenzo, Matilde, Sara, Simone P., Tommaso D.",
@@ -17,7 +6,6 @@
     "unique_annotators": 9,
     "avg_annotations_img": 2.148936170212766,
     "avg_pairwise_iou": 0.20798230792562208,
-    "avg_pairwise_iou_random": 0.016460193425141663,
-    "iou_vs_random_p_value": 1.3860792730217498e-15
->>>>>>> 578cbf00d2b4457082f2b934ecd7dd76bd940f67
+    "avg_pairwise_iou_random": 0.01436575335021282,
+    "iou_vs_random_p_value": 5.147797873131157e-16
 }
