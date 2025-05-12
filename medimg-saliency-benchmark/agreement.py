@@ -210,6 +210,9 @@ def main():
             
             # p-values
             for metric in metrics:
+                colname = f"{sm_name}_{metric}"
+                if colname not in current_config_results:
+                    continue
                 t_stat, p_value = stats.ttest_ind(
                     current_config_results[f"{sm_name}_{metric}"],
                     current_config_results[f"Random_{metric}"],
@@ -220,6 +223,9 @@ def main():
         # Only keep the mean after pvals
         for sm_name in saliency_methods:
             for metric in metrics:
+                colname = f"{sm_name}_{metric}"
+                if colname not in current_config_results:
+                    continue
                 current_config_results[f"{sm_name}_{metric}"] = np.mean(
                     current_config_results[f"{sm_name}_{metric}"]
                 ).item()
