@@ -563,15 +563,15 @@ def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_mask
     consensus_masks_dict = {}
     unique_image_names = sorted(list(set(record['image_name'] for record in annotations_metadata_list)))
     
-    print(f"\nRunning {CONSENSUS_METHOD} consensus with threshold {SALIENCY_BINARIZATION_THRESHOLD} from {RUN_NAME} mode.")
+    print(f"\nRunning {CONSENSUS_METHOD} consensus with threshold {SALIENCY_BINARIZATION_THRESHOLD}.")
     print(f"\nGenerating consensus masks for {len(unique_image_names)} unique images...")
     processed_count = 0
     for image_name in unique_image_names:
-        raw_masks_tuples = utils.get_masks_for_image_from_metadata(image_name,annotations_metadata_list, annotated_masks_dir, target_size=MODEL_INPUT_SIZE)
+        raw_masks_tuples = get_masks_for_image_from_metadata(image_name,annotations_metadata_list, annotated_masks_dir, target_size=MODEL_INPUT_SIZE)
 
         base_processed_masks = []
         for raw_mask, annotator_name in raw_masks_tuples: 
-            processed_mask_step1 = utils.process_circled_annotation(
+            processed_mask_step1 = process_circled_annotation(
                 raw_mask,
                 initial_closing_kernel_size=INITIAL_PRE_CLOSING_KERNEL_SIZE,
                 solidity_threshold=SOLIDITY_THRESHOLD,
@@ -584,7 +584,7 @@ def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_mask
                 processed_mask_step1 = np.zeros(MODEL_INPUT_SIZE, dtype=np.uint8)
             base_processed_masks.append(processed_mask_step1)
 
-        final_consensus = utils.create_consensus_mask(
+        final_consensus = create_consensus_mask(
             base_processed_masks,
             filter_type=CONSENSUS_POST_FILTER_TYPE,
             filter_kernel_size=CONSENSUS_POST_FILTER_KERNEL_SIZE,
