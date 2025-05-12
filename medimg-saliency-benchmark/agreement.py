@@ -135,7 +135,7 @@ def main():
                 saliency_tool.remove_hook()
                 
             # Ensure we have a valid value for the saliency method (even if it's 0)
-            avg_iou = np.mean(ious_for_current_saliency_method) if ious_for_current_saliency_method else 0.0
+            avg_iou = np.mean(ious_for_current_saliency_method) if ious_for_current_saliency_method else float("nan")
             current_config_results[sm_name] = avg_iou
         
         all_results_data.append(current_config_results)
