@@ -1,18 +1,13 @@
-<<<<<<< HEAD
-model,linear,pretrained,CAM_iou,CAM_pg,GradCAM_iou,GradCAM_pg,Random_iou,Random_pg,CAM_iou_pval,CAM_pg_pval,GradCAM_iou_pval,GradCAM_pg_pval
-an,True,True,0.0121,0.0286,0.0594,0.0857,0.0171,0.0000,0.4089,0.3244,0.0003,0.0831
-=======
-model,linear,pretrained,CAM,GradCAM,Random
-an,False,False,,0.0215,0.0236
-an,False,True,,0.0086,0.0157
-an,True,False,0.0047,0.0084,0.0239
-an,True,True,0.0212,0.0843,0.0328
-in,True,False,0.1358,0.1358,0.0148
-in,True,True,0.1277,0.1277,0.0240
-rn,True,False,0.0269,0.0297,0.0219
-rn,True,True,0.0584,0.0621,0.0291
-vgg,False,False,,0.0398,0.0231
-vgg,False,True,,0.0557,0.0239
-vgg,True,False,0.0106,0.0153,0.0168
-vgg,True,True,0.2078,0.1755,0.0196
->>>>>>> 578cbf00d2b4457082f2b934ecd7dd76bd940f67
+model,linear,pretrained,GradCAM_iou,GradCAM_pg,Random_iou,Random_pg,GradCAM_iou_pval,GradCAM_pg_pval,CAM_iou,CAM_pg,CAM_iou_pval,CAM_pg_pval
+an,False,False,0.0215,0.0556,0.0254,0.0000,0.6948,0.1602,,,,
+an,False,True,0.0086,0.0000,0.0199,0.0000,0.1838,,,,,
+an,True,False,0.0084,0.0833,0.0264,0.0000,0.0094,0.0831,0.0047,0.0278,0.0015,0.3242
+an,True,True,0.0843,0.1667,0.0156,0.0278,0.0000,0.0493,0.0212,0.0833,0.5426,0.3110
+in,True,False,0.1358,0.0000,0.0264,0.0000,0.0000,,0.1358,0.0000,0.0000,
+in,True,True,0.1277,0.2778,0.0283,0.0278,0.0000,0.0034,0.1277,0.2778,0.0000,0.0034
+rn,True,False,0.0297,0.0278,0.0339,0.0278,0.6956,1.0000,0.0269,0.0000,0.4847,0.3242
+rn,True,True,0.0621,0.3611,0.0195,0.0000,0.0080,0.0001,0.0584,0.3611,0.0097,0.0001
+vgg,False,False,0.0398,0.1667,0.0125,0.0000,0.0170,0.0121,,,,
+vgg,False,True,0.0557,0.0278,0.0227,0.0000,0.0625,0.3242,,,,
+vgg,True,False,0.0153,0.0833,0.0213,0.0556,0.4227,0.6486,0.0106,0.0556,0.1074,1.0000
+vgg,True,True,0.1755,0.1389,0.0247,0.0000,0.0000,0.0231,0.2078,0.1111,0.0000,0.0438
