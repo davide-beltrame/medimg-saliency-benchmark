@@ -62,6 +62,9 @@ def main():
     # To store dicts for DataFrame: {'model': 'an', 'linear': True, ... 'CAM': 0.1, ...}
     all_results_data = [] 
 
+    # To keep track of random perc
+    map_active_perc = []
+
     # Get all checkpoint files from the CHECKPOINT_DIR
     all_checkpoint_paths = sorted(glob.glob(os.path.join(CHECKPOINT_DIR, "*.ckpt")))
     print(f"\nFound {len(all_checkpoint_paths)} checkpoint files to process.")
@@ -117,10 +120,16 @@ def main():
 
                 saliency_map_np = None
                 if sm_name == "Random":
-                    saliency_map_np = utils.generate_random_map(size=MODEL_INPUT_SIZE)
+                    assert len(map_active_perc) > 0
+                    assert saliency_map_np is not None
+
+                    saliency_map_np = utils.generate_random_mask_like(
+                        saliency_map_np,
+                        grid_size=10,
+                        nonzero_perc=np.mean(map_active_perc)
+                    )
                 else:
                     saliency_map_np = saliency_tool(input_tensor)
-                assert saliency_map_np is not None
 
                 binarized_saliency_map = utils.binarize_saliency_map(
                     saliency_map_np,
@@ -130,6 +139,9 @@ def main():
                 iou = utils.calculate_iou(binarized_saliency_map, expert_mask_np)
                 ious_for_current_saliency_method.append(iou)
 
+                # keep track of active perc for later generating random
+                map_active_perc.append(binarized_saliency_map.sum() / binarized_saliency_map.size)
+            
             # Best practice            
             if saliency_tool and hasattr(saliency_tool, 'remove_hook'):
                 saliency_tool.remove_hook()

@@ -296,7 +296,7 @@ def main():
     df.to_csv(
         os.path.join(
             os.path.dirname(PATH_TO_ANNOTATED),
-            "clean_meatadata.csv")
+            "clean_metadata.csv")
     )
 
 if __name__ == "__main__":
