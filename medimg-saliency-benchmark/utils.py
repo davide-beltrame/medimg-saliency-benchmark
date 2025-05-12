@@ -666,29 +666,15 @@ def pointing_game(saliency_map, expert_mask, threshold_saliency=None):
                         Usually, Pointing Game uses the raw max point.
     Returns: 1 if the max saliency point is in the expert mask, 0 otherwise.
     """
-    if saliency_map is None or expert_mask is None:
-        return 0.0
-    if saliency_map.shape != expert_mask.shape:
-        # Attempt to resize saliency_map to expert_mask shape if they differ
-        # This can happen if GradCAM output size is slightly different
-        saliency_map = cv2.resize(
-            saliency_map,
-            (expert_mask.shape[1], expert_mask.shape[0]),
-            interpolation=cv2.INTER_LINEAR,
-        )
+    assert saliency_map is not None
+    assert expert_mask is not None
 
-    if threshold_saliency is not None:
-        saliency_map = (saliency_map >= threshold_saliency).astype(np.uint8)
+    assert saliency_map.shape == expert_mask.shape
 
-    # Find the coordinates of the maximum value in the saliency map
-    # If multiple maxima, np.unravel_index gives the first one.
     max_coords = np.unravel_index(np.argmax(saliency_map), saliency_map.shape)
 
     # Check if this point is within the expert mask (where expert_mask == 1)
-    if expert_mask[max_coords] == 1:
-        return 1.0
-    else:
-        return 0.0
+    return float(expert_mask[max_coords] == 1)
 
 
 def find_checkpoint(model_short_key):
