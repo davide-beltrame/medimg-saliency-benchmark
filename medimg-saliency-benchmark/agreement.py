@@ -39,10 +39,11 @@ def main():
 
     # Load filtered annotations 
     annotations_metadata_list_filtered = pd.read_csv(
-        os.path.dirname(
-            ANNOTATIONS_METADATA_PATH),
+        os.path.join(
+            os.path.dirname(ANNOTATIONS_METADATA_PATH),
             "clean_metadata.csv"
-        ).to_dict(orient='records')
+        )
+    ).to_dict(orient='records')
 
     # 2. Get Expert Consensus Masks for images to be evaluated
     # This dictionary will contain {image_filename: consensus_mask_np}
