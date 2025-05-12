@@ -253,7 +253,11 @@ def compute_cross_ious(df):
     
     # Perform statistical test to get p-value
     # Using paired t-test since we have the same pairs for both real and random masks
-    t_stat, p_value = stats.ttest_ind(results.iou, results_random.iou, equal_var=False)
+    t_stat, p_value = stats.mannwhitneyu(
+        results.iou,
+        results_random.iou,
+        alternative='greater'
+    )
     
     # Store overall mean and p-value
     payload["avg_pairwise_iou"] = results.iou.mean().item()

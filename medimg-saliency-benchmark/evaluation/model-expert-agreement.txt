@@ -1,0 +1,17 @@
+\begin{table*}[t]
+    \centering
+    \setlength{\tabcolsep}{3pt}
+    \caption{\textbf{Performance-Agreement Correlation.} Entries show correlations between model performances and saliency map scores. P-values are reported and significant results are highlighted in bold.}
+    \begin{tabularx}{\linewidth}{l|YY|YY|YY}
+        \toprule
+        \multirow{2}{*}{Model} & \multicolumn{2}{c|}{GradCAM} & \multicolumn{2}{c|}{CAM} & \multicolumn{2}{c}{Random} \\
+        & IoU & PG & IoU & PG & IoU & PG \\
+        \midrule
+        AlexNet & 8.43 {\scriptsize 0.000} & 16.67 {\scriptsize 0.049} & \textit{2.12 {\scriptsize 0.543}} & \textit{8.33 {\scriptsize 0.311}} & 1.56 {\scriptsize -} & 2.78 {\scriptsize -} \\
+        InceptionNet-V1 & 12.77 {\scriptsize 0.000} & 27.78 {\scriptsize 0.003} & 12.77 {\scriptsize 0.000} & 27.78 {\scriptsize 0.003} & 2.83 {\scriptsize -} & 2.78 {\scriptsize -} \\
+        ResNet-50 & 6.21 {\scriptsize 0.008} & 36.11 {\scriptsize 0.000} & 5.84 {\scriptsize 0.010} & 36.11 {\scriptsize 0.000} & 1.95 {\scriptsize -} & 0.00 {\scriptsize -} \\
+        VGG-16 & 17.55 {\scriptsize 0.000} & 13.89 {\scriptsize 0.023} & 20.78 {\scriptsize 0.000} & 11.11 {\scriptsize 0.044} & 2.47 {\scriptsize -} & 0.00 {\scriptsize -} \\
+        \bottomrule
+    \end{tabularx}
+    \label{tb:ModelSaliencyComparison}
+\end{table*}

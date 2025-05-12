@@ -112,8 +112,10 @@ def main():
         for sm_name in saliency_methods:
 
             # Skip models no appropriate for CAM
-            if sm_name == "CAM" and not current_config_results["linear"]:
+            if not (current_config_results["linear"] and current_config_results["pretrained"]):
                 continue
+            # if sm_name == "CAM" and not current_config_results["linear"]:
+            #     continue
             
             # Keep track of results
             ious_for_current_saliency_method = []
@@ -213,10 +215,10 @@ def main():
                 colname = f"{sm_name}_{metric}"
                 if colname not in current_config_results:
                     continue
-                t_stat, p_value = stats.ttest_ind(
+                t_stat, p_value = stats.mannwhitneyu(
                     current_config_results[f"{sm_name}_{metric}"],
                     current_config_results[f"Random_{metric}"],
-                    equal_var=False
+                    alternative='greater'
                 )
                 current_config_results[f"{sm_name}_{metric}_pval"] = p_value.item()
 
@@ -241,8 +243,11 @@ def main():
     output_columns += sorted(
         [f"{sm}_{metric}" for sm, metric in zip(saliency_methods, metrics)]
     )
+    output_columns += sorted(
+        [f"{sm}_{metric}_pval" for sm, metric in zip(saliency_methods, metrics)]
+    )
     
-    # results_df = results_df[output_columns]
+    results_df = results_df[output_columns]
     
     # Print & save results
     print(results_df.to_string(index=False, float_format="%.4f"))
