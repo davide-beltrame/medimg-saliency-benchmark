@@ -248,7 +248,7 @@ def main():
     print(results_df.to_string(index=False, float_format="%.4f"))
     csv_output_path = os.path.join(
         "evaluation",
-        f"saliency_iou_results_{CONSENSUS_TYPE}_{RUN_NAME}_{SALIENCY_BINARIZATION_THRESHOLD}.csv"
+        "model-expert-agreement.csv"
     )
     results_df.to_csv(
         csv_output_path,
