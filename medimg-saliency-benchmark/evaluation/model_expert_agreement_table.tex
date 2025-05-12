@@ -1,0 +1,17 @@
+\begin{table*}[t]
+    \centering
+    \setlength{\tabcolsep}{3pt}
+    \caption{\textbf{Model-Expert Agreement.} Entries show the degree of agreement between model-generated saliency maps and expert annotations, measured by Intersection over Union (IoU) and Pointing Game (PG) metrics. P-values are reported in smaller font, and the \underline{non}-statistically significant results are highlighted in italic. Threshold values used for each method are shown in the column headers or as separate columns when they vary by model.}
+    \begin{tabularx}{\linewidth}{l|YY|YYY|YY}
+        \toprule
+        \multirow{2}{*}{Model} & \multicolumn{2}{c|}{GradCAM (thr=0.74)} & \multicolumn{3}{c|}{CAM} & \multicolumn{2}{c}{Random (thr=0.50)} \\
+        & IoU & PG & Thr & IoU & PG & IoU & PG \\
+        \midrule
+        AlexNet & 8.43 {\scriptsize 0.010} & 16.67 {\scriptsize 0.010} & {\scriptsize 0.60} & 4.31 {\scriptsize 0.010} & 5.56 {\scriptsize 0.010} & 3.05 {\scriptsize -} & 0.00 {\scriptsize -} \\
+        InceptionNet-V1 & 12.77 {\scriptsize 0.010} & 27.78 {\scriptsize 0.010} & {\scriptsize 0.84} & 13.84 {\scriptsize 0.010} & 33.33 {\scriptsize 0.010} & 2.87 {\scriptsize -} & 0.00 {\scriptsize -} \\
+        ResNet-50 & 6.21 {\scriptsize 0.010} & 36.11 {\scriptsize 0.010} & {\scriptsize 0.74} & 5.84 {\scriptsize 0.010} & 36.11 {\scriptsize 0.010} & 2.41 {\scriptsize -} & 2.78 {\scriptsize -} \\
+        VGG-16 & 17.55 {\scriptsize 0.010} & 13.89 {\scriptsize 0.010} & {\scriptsize 0.74} & 20.78 {\scriptsize 0.010} & 11.11 {\scriptsize 0.010} & 2.58 {\scriptsize -} & 0.00 {\scriptsize -} \\
+        \bottomrule
+    \end{tabularx}
+    \label{tb:ModelSaliencyComparison}
+\end{table*}

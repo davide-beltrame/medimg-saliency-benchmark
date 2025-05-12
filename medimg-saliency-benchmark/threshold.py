@@ -251,11 +251,15 @@ def main():
     print(f"\nAll model results saved to {csv_path}")
 
     print("\n--- Analyzing Best Thresholds from Calculated Data ---")
-    if best_threshold_details:
-        for detail in best_threshold_details:
-            print(detail)
-    else:
-        print("  No valid IoU data to analyze for best thresholds.")
+
+    for detail in best_threshold_details:
+        print(detail)
+
+    # create dataframe with the best thresholds and the max iou for each model
+
+    best_thresholds_df = pd.DataFrame(best_threshold_details)
+    best_thresholds_df.to_csv(os.path.join(PLOTS_DIR, f"best_thresholds_{saliency_method_upper.lower()}.csv"), index=False)
+    print(f"\nBest thresholds saved to {os.path.join(PLOTS_DIR, f'best_thresholds_{saliency_method_upper.lower()}.csv')}")
 
 
     # 5. Generate and Save Plot

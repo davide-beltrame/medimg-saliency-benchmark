@@ -1,0 +1,5 @@
+model,linear,pretrained,iou,pg,threshold,iou_pval,pg_pval
+an,True,True,0.0843,0.1667,0.7400,0.0100,0.0100
+in,True,True,0.1277,0.2778,0.7400,0.0100,0.0100
+rn,True,True,0.0621,0.3611,0.7400,0.0100,0.0100
+vgg,True,True,0.1755,0.1389,0.7400,0.0100,0.0100

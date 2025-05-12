@@ -25,7 +25,7 @@ ORIGINAL_IMAGES_DIR_FOR_SALIENCY = (
 
 MODEL_INPUT_SIZE = (224, 224)
 
-SALIENCY_BINARIZATION_THRESHOLD = 0.74
+DEFAULT_SALIENCY_BINARIZATION_THRESHOLD = 0.74
 
 INITIAL_PRE_CLOSING_KERNEL_SIZE = 3
 SOLIDITY_THRESHOLD = 0.6
@@ -556,15 +556,14 @@ def create_consensus_mask(
 
 def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_masks_dir):
     """
-    Generates final consensus masks for all images that have annotations.
     Returns a dictionary: {image_filename: consensus_mask_np}
     Only includes images where the final consensus mask is non-empty.
     """
-    from agreement import RUN_NAME, CONSENSUS_METHOD, SALIENCY_BINARIZATION_THRESHOLD
+    from agreement import RUN_NAME, CONSENSUS_METHOD
     consensus_masks_dict = {}
     unique_image_names = sorted(list(set(record['image_name'] for record in annotations_metadata_list)))
     
-    print(f"\nRunning {CONSENSUS_METHOD} consensus with threshold {SALIENCY_BINARIZATION_THRESHOLD}.")
+    print(f"\nRunning {CONSENSUS_METHOD} consensus with threshold {DEFAULT_SALIENCY_BINARIZATION_THRESHOLD}.")
     print(f"\nGenerating consensus masks for {len(unique_image_names)} unique images...")
     processed_count = 0
     for image_name in unique_image_names:
@@ -736,7 +735,7 @@ def load_image_np(image_path):
 
 
 def binarize_saliency_map(
-    saliency_map_np, method="fixed", threshold_value=SALIENCY_BINARIZATION_THRESHOLD
+    saliency_map_np, method="fixed", threshold_value=DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
 ):
     if saliency_map_np is None:
         return None
