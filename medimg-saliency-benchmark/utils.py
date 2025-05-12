@@ -560,6 +560,7 @@ def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_mask
     Returns a dictionary: {image_filename: consensus_mask_np}
     Only includes images where the final consensus mask is non-empty.
     """
+    from agreement import RUN_NAME, CONSENSUS_METHOD, SALIENCY_BINARIZATION_THRESHOLD
     consensus_masks_dict = {}
     unique_image_names = sorted(list(set(record['image_name'] for record in annotations_metadata_list)))
     
