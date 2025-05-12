@@ -1,19 +1,11 @@
 import os
 import glob
-import json
-import argparse
-import torch
-import numpy as np
-import cv2
-import pandas as pd
-from PIL import Image
-from torchvision import transforms
 
+import numpy as np
+import pandas as pd
 import utils
 from models import BaseCNN 
-from models import AlexNetBinary, VGG16Binary, ResNet50Binary, InceptionNetBinary
 import saliency
-from datamodule import Dataset as PnDataset 
 
 CONSENSUS_TYPE = "full" # this is only used for the output file name
 RUN_NAME = "test" # this is only used for the output file name
@@ -40,16 +32,17 @@ CONSENSUS_METHOD = 'intersection'
 
 
 def main():
+
+    # Get device
     device = utils.get_device()
     print(f"Using device: {device}")
 
-    # 1. Load and Filter Annotations Metadata (excluding test annotators)
-    with open(ANNOTATIONS_METADATA_PATH, 'r') as f:
-        annotations_metadata_raw = json.load(f)
-    df_metadata_raw = pd.DataFrame(annotations_metadata_raw)
-    df_metadata_filtered = df_metadata_raw[~df_metadata_raw['annotator_name'].str.contains('test', case=False, na=False)].copy()
-    annotations_metadata_list_filtered = df_metadata_filtered.to_dict(orient='records')
-    print(f"Loaded and filtered annotations: {len(annotations_metadata_list_filtered)} records remaining.")
+    # Load filtered annotations 
+    annotations_metadata_list_filtered = pd.read_csv(
+        os.path.dirname(
+            ANNOTATIONS_METADATA_PATH),
+            "clean_metadata.csv"
+        ).to_dict(orient='records')
 
     # 2. Get Expert Consensus Masks for images to be evaluated
     # This dictionary will contain {image_filename: consensus_mask_np}
@@ -62,14 +55,17 @@ def main():
     evaluation_images = list(expert_consensus_masks.keys())
     print(f"\nStarting saliency evaluation for {len(evaluation_images)} images with non-empty consensus masks.")
 
-    saliency_methods = ["CAM", "GradCAM", "Random"] # RISE is not included because it's way too slow, but it works
-    all_results_data = [] # To store dicts for DataFrame: {'model': 'an', 'linear': True, ... 'CAM': 0.1, ...}
+     # RISE is not included because it's way too slow, but it works
+    saliency_methods = ["CAM", "GradCAM", "Random"]
+
+    # To store dicts for DataFrame: {'model': 'an', 'linear': True, ... 'CAM': 0.1, ...}
+    all_results_data = [] 
 
     # Get all checkpoint files from the CHECKPOINT_DIR
     all_checkpoint_paths = sorted(glob.glob(os.path.join(CHECKPOINT_DIR, "*.ckpt")))
     print(f"\nFound {len(all_checkpoint_paths)} checkpoint files to process.")
 
-    # 3. Perform Evaluation for each checkpoint
+    # Loop 1: Model Checkpoint
     for ckpt_idx, ckpt_path in enumerate(all_checkpoint_paths):
         print(f"\nProcessing checkpoint {ckpt_idx + 1}/{len(all_checkpoint_paths)}: {os.path.basename(ckpt_path)}")
         
@@ -81,51 +77,59 @@ def main():
             'pretrained': parsed_info['pretrained']
         }
 
-        pl_model_wrapper = BaseCNN.load_from_checkpoint(ckpt_path, map_location=device)
-        actual_model = pl_model_wrapper.model 
-        actual_model.to(device).eval()
+        # Load the model checkpoint
+        model = BaseCNN.load_from_checkpoint(ckpt_path, map_location=device)
+        model.model.to(device).eval()
 
+        # Loop 2: Saliency Methods
         for sm_name in saliency_methods:
-            ious_for_current_saliency_method = []
+
+            # Skip models no appropriate for CAM
+            if sm_name == "CAM" and not current_config_results["linear"]:
+                continue
             
-            saliency_tool = None
+            # Keep track of results
+            ious_for_current_saliency_method = []
             try:
                 if sm_name == "CAM" and hasattr(saliency, 'CAM'):
-                    saliency_tool = saliency.CAM(actual_model)
+                    saliency_tool = saliency.CAM(model.model)
                 elif sm_name == "GradCAM" and hasattr(saliency, 'GradCAM'):
-                    saliency_tool = saliency.GradCAM(actual_model)
+                    saliency_tool = saliency.GradCAM(model.model)
                 elif sm_name == "RISE" and hasattr(saliency, 'RISE'):
-                    saliency_tool = saliency.RISE(actual_model, num_masks=500, scale_factor=16)
+                    saliency_tool = saliency.RISE(model.model, num_masks=4000, scale_factor=20)
             except Exception as e:
                 print(f"  Warning: Error initializing {sm_name} for {ckpt_path}: {e}")
 
-            for image_filename in evaluation_images: # this is the only loop that runs for each image
-                possible_paths = [ # it checks if the image is present in the PNEUMONIA or NORMAL folder
-                    os.path.join(ORIGINAL_IMAGES_DIR_FOR_SALIENCY, "PNEUMONIA", image_filename),
-                    os.path.join(ORIGINAL_IMAGES_DIR_FOR_SALIENCY, "NORMAL", image_filename),
-                ]
-                image_path_for_saliency = None
-                for p_path in possible_paths:
-                    if os.path.exists(p_path):
-                        image_path_for_saliency = p_path
-                        break
-                if not image_path_for_saliency: continue
+            # Loop 3: Test Images
+            for image_filename in evaluation_images:
+
+                image_path_for_saliency = os.path.join(ORIGINAL_IMAGES_DIR_FOR_SALIENCY, "PNEUMONIA", image_filename)
+                assert os.path.exists(image_path_for_saliency)
+
                 input_tensor = utils.load_image_tensor(image_path_for_saliency, device)
-                if input_tensor is None: continue
+                
+                if input_tensor is None: 
+                    continue
+                
+                # From dict of annotatoins
                 expert_mask_np = expert_consensus_masks[image_filename]
 
                 saliency_map_np = None
                 if sm_name == "Random":
                     saliency_map_np = utils.generate_random_map(size=MODEL_INPUT_SIZE)
-                elif saliency_tool is not None:
+                else:
                     saliency_map_np = saliency_tool(input_tensor)
-                
-                if saliency_map_np is not None:
-                    binarized_saliency_map = utils.binarize_saliency_map(saliency_map_np, method="fixed", threshold_value=SALIENCY_BINARIZATION_THRESHOLD)
-                    if binarized_saliency_map is not None:
-                        iou = utils.calculate_iou(binarized_saliency_map, expert_mask_np)
-                        ious_for_current_saliency_method.append(iou)
-            
+                assert saliency_map_np is not None
+
+                binarized_saliency_map = utils.binarize_saliency_map(
+                    saliency_map_np,
+                    method="fixed",
+                    threshold_value=SALIENCY_BINARIZATION_THRESHOLD
+                )
+                iou = utils.calculate_iou(binarized_saliency_map, expert_mask_np)
+                ious_for_current_saliency_method.append(iou)
+
+            # Best practice            
             if saliency_tool and hasattr(saliency_tool, 'remove_hook'):
                 saliency_tool.remove_hook()
                 
@@ -134,14 +138,20 @@ def main():
             current_config_results[sm_name] = avg_iou
         
         all_results_data.append(current_config_results)
-        print(f"  Finished {os.path.basename(ckpt_path)}. Avg IoUs: CAM={current_config_results.get('CAM', float('nan')):.4f}, GradCAM={current_config_results.get('GradCAM', float('nan')):.4f}, Random={current_config_results.get('Random', float('nan')):.4f}")
+        print(
+            f"Finished {os.path.basename(ckpt_path)}."
+            f"Avg IoUs: CAM={current_config_results.get('CAM', float('nan')):.4f},"
+            f"GradCAM={current_config_results.get('GradCAM', float('nan')):.4f},"
+            f"Random={current_config_results.get('Random', float('nan')):.4f}"
+        )
 
-    # 4. Create and Save Results Table (Granular)
+    # Convert to df
     results_df = pd.DataFrame(all_results_data)
 
     # Define column order for the output CSV
     output_columns = ['model', 'linear', 'pretrained'] + \
                     [sm for sm in saliency_methods if sm in results_df.columns]
+    
     # Add any saliency methods that might have all NaNs but should still be columns
     for sm_col in saliency_methods:
         if sm_col not in results_df.columns:

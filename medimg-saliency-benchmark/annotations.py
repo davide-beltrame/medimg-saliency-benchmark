@@ -292,5 +292,12 @@ def main():
     print(f"Saved payload to {path}:")
     print(payload)
 
+    # Save the final dataframe
+    df.to_csv(
+        os.path.join(
+            os.path.dirname(PATH_TO_ANNOTATED),
+            "clean_meatadata.csv")
+    )
+
 if __name__ == "__main__":
     main()
