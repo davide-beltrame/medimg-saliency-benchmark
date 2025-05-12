@@ -90,6 +90,10 @@ def main():
     # Get device
     device = utils.get_device()
     print(f"Using device: {device}")
+    
+    # Create evaluation directory if it doesn't exist
+    evaluation_dir = os.path.join(os.path.dirname(__file__), "evaluation")
+    os.makedirs(evaluation_dir, exist_ok=True)
 
     # Load filtered annotations 
     annotations_metadata_list_filtered = pd.read_csv(
@@ -303,8 +307,14 @@ def main():
             print(f"No results for {sm_name}")
             continue
         
+        # Create a copy of the results without the original lists for CSV output
+        csv_results = []
+        for result in results_by_method[sm_name]:
+            csv_result = {k: v for k, v in result.items() if not k.endswith('_original')}
+            csv_results.append(csv_result)
+        
         # Convert to DataFrame
-        method_df = pd.DataFrame(results_by_method[sm_name])
+        method_df = pd.DataFrame(csv_results)
         
         # Print the results
         print(f"\n--- Results for {sm_name} ---")
@@ -312,7 +322,7 @@ def main():
         
         # Save to CSV
         csv_output_path = os.path.join(
-            "evaluation",
+            evaluation_dir,
             f"model-expert-agreement-{sm_name.lower()}.csv"
         )
         method_df.to_csv(
