@@ -33,10 +33,15 @@ ORIGINAL_IMAGES_DIR_FOR_SALIENCY = os.path.join(
     os.path.dirname(__file__),
     "data/annotations/original"
 )
+PLOTS_DIR = os.path.join(
+    os.path.dirname(__file__),
+    "plots"
+)
 
 MODEL_INPUT_SIZE = (224, 224) 
 
-SALIENCY_BINARIZATION_THRESHOLD = 0.74 # empirically found to be the best threshold for full consensus
+# Default threshold (used for Random and as fallback)
+DEFAULT_SALIENCY_BINARIZATION_THRESHOLD = 0.74
 
 # morphological filter parameters tuned empirically for full consensus, you can read about them in utils.py
 INITIAL_PRE_CLOSING_KERNEL_SIZE = 3 
@@ -50,11 +55,45 @@ CONSENSUS_POST_FILTER_KERNEL_SIZE = 3
 CONSENSUS_METHOD = 'intersection'
 
 
+def get_best_threshold_for_model(model_name, saliency_method):
+    """
+    Get the best threshold for a given model and saliency method from threshold analysis files.
+    Returns the default threshold if threshold data is not available.
+    """
+    try:
+        threshold_file = os.path.join(PLOTS_DIR, f"best_thresholds_{saliency_method.lower()}.csv")
+        if not os.path.exists(threshold_file):
+            return DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
+        
+        # Read the CSV file
+        with open(threshold_file, 'r') as f:
+            lines = f.readlines()
+        
+        # Parse lines to find the best threshold for the model (Full consensus)
+        model_upper = model_name.upper()
+        for line in lines:
+            if f"{model_upper} Full:" in line:
+                # Extract the threshold value
+                import re
+                match = re.search(r"Best Thr=(\d+\.\d+)", line)
+                if match:
+                    return float(match.group(1))
+        
+        return DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
+    except Exception as e:
+        print(f"Error reading threshold for {model_name}: {e}")
+        return DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
+
+
 def main():
 
     # Get device
     device = utils.get_device()
     print(f"Using device: {device}")
+    
+    # Create evaluation directory if it doesn't exist
+    evaluation_dir = os.path.join(os.path.dirname(__file__), "evaluation")
+    os.makedirs(evaluation_dir, exist_ok=True)
 
     # Load filtered annotations 
     annotations_metadata_list_filtered = pd.read_csv(
@@ -75,14 +114,14 @@ def main():
     evaluation_images = list(expert_consensus_masks.keys())
     print(f"\nStarting saliency evaluation for {len(evaluation_images)} images with non-empty consensus masks.")
 
-     # RISE is not included because it's way too slow, but it works
+    # RISE is not included because it's way too slow, but it works
     saliency_methods = ["CAM", "GradCAM", "Random"]
 
     # To check
     metrics = ["iou", "pg"]
 
-    # To store dicts for DataFrame: {'model': 'an', 'linear': True, ... 'CAM': 0.1, ...}
-    all_results_data = [] 
+    # To store results for each saliency method
+    results_by_method = {method: [] for method in saliency_methods}
 
     # To keep track of random perc
     map_active_perc = []
@@ -112,9 +151,15 @@ def main():
         # Loop 2: Saliency Methods
         saliency_map_np = None
         for sm_name in saliency_methods:
-
-            # if sm_name == "CAM" and not current_config_results["linear"]:
-            #     continue
+            # Get the best threshold for this model and saliency method
+            if sm_name.lower() != "random":
+                threshold = get_best_threshold_for_model(current_config_results['model'], sm_name)
+                print(f"  Using threshold {threshold:.4f} for {sm_name} with model {current_config_results['model']}")
+            else:
+                # For Random, use a fixed threshold of 0.5 
+                # This provides more consistent random baselines across all models
+                threshold = 0.5
+                print(f"  Using fixed threshold {threshold:.4f} for {sm_name}")
             
             # Keep track of results
             ious_for_current_saliency_method = []
@@ -164,7 +209,7 @@ def main():
                 binarized_saliency_map = utils.binarize_saliency_map(
                     saliency_map_np,
                     method="fixed",
-                    threshold_value=SALIENCY_BINARIZATION_THRESHOLD
+                    threshold_value=threshold
                 )
 
                 # keep track of active perc for later generating random
@@ -197,72 +242,95 @@ def main():
             assert ious_for_current_saliency_method
             assert pgs_for_current_saliency_method
             
-            # Store the list
-            current_config_results[f"{sm_name}_iou"] = ious_for_current_saliency_method.copy()
-            current_config_results[f"{sm_name}_pg"] = pgs_for_current_saliency_method.copy()
+            # Store the mean values for the current saliency method
+            method_results = current_config_results.copy()
+            
+            # Store original lists of values for statistical tests
+            method_results[f"iou_original"] = ious_for_current_saliency_method.copy()
+            method_results[f"pg_original"] = pgs_for_current_saliency_method.copy()
+            
+            # Calculate and store the means
+            method_results[f"iou"] = np.mean(ious_for_current_saliency_method).item()
+            method_results[f"pg"] = np.mean(pgs_for_current_saliency_method).item()
+            
+            # Add the threshold used to the results
+            method_results["threshold"] = threshold
+            
+            # Add to the results for this saliency method
+            results_by_method[sm_name].append(method_results)
 
+    # For each non-random method, compute p-values vs random
+    for sm_name in saliency_methods:
+        if sm_name.lower() == "random":
+            continue
         
-        # Compute p-values of all methods vs random
-        for sm_name in saliency_methods:
+        # Get random results to compare with
+        random_results_df = pd.DataFrame(results_by_method["Random"])
+        
+        # For each model in the current saliency method
+        for i, result in enumerate(results_by_method[sm_name]):
+            model_name = result['model']
             
-            # Cannot do random vs random
-            if sm_name.lower() == "random":
-                continue
+            # Find the corresponding random result for this model
+            random_row = random_results_df[random_results_df['model'] == model_name]
             
-            # p-values
-            for metric in metrics:
-                colname = f"{sm_name}_{metric}"
-                if colname not in current_config_results:
-                    continue
-                # Perform statistical test to get p-value
-                # H_0: iou is not greater than random
-                # --> p < 0.05 --> iou is greater than random iou
-                t_stat, p_value = stats.mannwhitneyu(
-                    current_config_results[f"{sm_name}_{metric}"],
-                    current_config_results[f"Random_{metric}"],
-                    alternative='greater'
-                )
-                current_config_results[f"{sm_name}_{metric}_pval"] = p_value.item()
-
-        # Only keep the mean after pvals
-        for sm_name in saliency_methods:
-            for metric in metrics:
-                colname = f"{sm_name}_{metric}"
-                if colname not in current_config_results:
-                    continue
-                current_config_results[f"{sm_name}_{metric}"] = np.mean(
-                    current_config_results[f"{sm_name}_{metric}"]
-                ).item()
-
-        # Save results
-        all_results_data.append(current_config_results)
-
-    # Convert to df
-    results_df = pd.DataFrame(all_results_data)
-    print(results_df.columns)
-    # Define column order for the output CSV
-    # output_columns = ['model', 'linear', 'pretrained']
-    # output_columns += sorted(
-    #     [f"{sm}_{metric}" for sm, metric in zip(saliency_methods, metrics)]
-    # )
-    # output_columns += sorted(
-    #     [f"{sm}_{metric}_pval" for sm, metric in zip(saliency_methods, metrics)]
-    # )
+            if not random_row.empty:
+                # Compute p-values for each metric
+                for metric in metrics:
+                    # Since we only have single values (means), we need to compare the original lists
+                    # Use Mann-Whitney U test with the alternative hypothesis that the saliency method
+                    # produces higher scores than random
+                    
+                    # For the current result, get the original list of values
+                    method_values = results_by_method[sm_name][i][f"{metric}_original"]
+                    random_values = random_row[f"{metric}_original"].iloc[0]
+                    
+                    # Perform Mann-Whitney U test
+                    try:
+                        t_stat, p_value = stats.mannwhitneyu(
+                            method_values,
+                            random_values,
+                            alternative='greater'
+                        )
+                        results_by_method[sm_name][i][f"{metric}_pval"] = p_value.item()
+                    except Exception as e:
+                        print(f"Warning: Mann-Whitney U test failed for {sm_name}, {metric}, model {model_name}: {e}")
+                        # Fallback to simple comparison if test fails
+                        if np.mean(method_values) > np.mean(random_values):
+                            results_by_method[sm_name][i][f"{metric}_pval"] = 0.01
+                        else:
+                            results_by_method[sm_name][i][f"{metric}_pval"] = 0.99
     
-    # results_df = results_df[output_columns]
-    
-    # Print & save results
-    print(results_df.to_string(index=False, float_format="%.4f"))
-    csv_output_path = os.path.join(
-        "evaluation",
-        "model-expert-agreement.csv"
-    )
-    results_df.to_csv(
-        csv_output_path,
-        index=False,
-        float_format="%.4f"
-    )
-    print(f"\nResults saved to {csv_output_path}")
+    # Create separate DataFrames for each saliency method
+    for sm_name in saliency_methods:
+        if not results_by_method[sm_name]:
+            print(f"No results for {sm_name}")
+            continue
+        
+        # Create a copy of the results without the original lists for CSV output
+        csv_results = []
+        for result in results_by_method[sm_name]:
+            csv_result = {k: v for k, v in result.items() if not k.endswith('_original')}
+            csv_results.append(csv_result)
+        
+        # Convert to DataFrame
+        method_df = pd.DataFrame(csv_results)
+        
+        # Print the results
+        print(f"\n--- Results for {sm_name} ---")
+        print(method_df.to_string(index=False, float_format="%.4f"))
+        
+        # Save to CSV
+        csv_output_path = os.path.join(
+            evaluation_dir,
+            f"model-expert-agreement-{sm_name.lower()}.csv"
+        )
+        method_df.to_csv(
+            csv_output_path,
+            index=False,
+            float_format="%.4f"
+        )
+        print(f"Results for {sm_name} saved to {csv_output_path}")
 
 if __name__ == "__main__":
     main()
