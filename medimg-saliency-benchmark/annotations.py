@@ -283,6 +283,7 @@ def main():
     payload["valid_annotations"] = len(df)
     payload["unique_annotators"] = len(df.annotator_name.unique())
     payload["avg_annotations_img"] = df.groupby("image_name").size().mean().item()
+    payload["unique_annotated_img"] = len(df.image_name.unique())
     
     # Frequency of annotations
     save_plots(df)
