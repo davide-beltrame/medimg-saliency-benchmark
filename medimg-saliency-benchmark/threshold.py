@@ -26,7 +26,6 @@ MODEL_CONFIGS = {
     "rn": "rn_True_True_0.05.ckpt",   
     "in": "in_True_True_0.01.ckpt"      
 }
-GIOVANNI_NAME_PATTERN = "giovanni p" 
 
 def get_expert_consensus_masks_for_specific_annotators(
     group_name,
@@ -110,21 +109,10 @@ def main():
     print(f"\nTotal non-test annotations loaded: {len(annotations_non_test_list)}")
 
     annotations_full_expert = annotations_non_test_list
-    initial_gio_annotations = [r for r in annotations_non_test_list if GIOVANNI_NAME_PATTERN in r.get('annotator_name', '').lower()]
-    if not initial_gio_annotations:
-        print(f"CRITICAL: No annotator names matched '{GIOVANNI_NAME_PATTERN}'. 'Giovanni Only' data will be empty.")
-    else:
-        print(f"Found {len(initial_gio_annotations)} raw annotations for Giovanni ('{GIOVANNI_NAME_PATTERN}').")
-    annotations_giovanni_only = initial_gio_annotations
 
     # 2. Get Expert Consensus Masks (once for all models)
     print("\nGenerating expert consensus masks (once for all models)...")
     consensus_masks_full = get_expert_consensus_masks_for_specific_annotators("Full Expert", annotations_full_expert)
-    consensus_masks_gio = {}
-    if annotations_giovanni_only:
-        consensus_masks_gio = get_expert_consensus_masks_for_specific_annotators("Giovanni Only", annotations_giovanni_only)
-    else:
-        print("  Skipping Giovanni Only consensus mask generation as no raw annotations were found.")
 
     all_evaluation_image_names = sorted(list(set(r['image_name'] for r in annotations_non_test_list)))
     print(f"\nWill attempt evaluation for up to {len(all_evaluation_image_names)} unique images from non-test annotations.")
@@ -173,9 +161,7 @@ def main():
 
         # Initialize results storage for this model
         iou_results_full_model = {t: [] for t in thresholds_arr}
-        iou_results_gio_model = {t: [] for t in thresholds_arr}
         images_contributing_full_model = set()
-        images_contributing_gio_model = set()
 
         print(f"  Starting IoU calculation for {model_key.upper()} across {len(all_evaluation_image_names)} images...")
         for image_filename in all_evaluation_image_names:
@@ -202,26 +188,17 @@ def main():
                 for t in thresholds_arr:
                     bin_map = utils.binarize_saliency_map(saliency_map_np, threshold_value=t)
                     iou_results_full_model[t].append(utils.calculate_iou(bin_map, consensus_masks_full[image_filename]))
-            
-            if image_filename in consensus_masks_gio:
-                images_contributing_gio_model.add(image_filename)
-                for t in thresholds_arr:
-                    bin_map = utils.binarize_saliency_map(saliency_map_np, threshold_value=t)
-                    iou_results_gio_model[t].append(utils.calculate_iou(bin_map, consensus_masks_gio[image_filename]))
         
         if hasattr(saliency_tool, 'remove_hook') and callable(saliency_tool.remove_hook): saliency_tool.remove_hook()
         if hasattr(saliency_tool, 'remove_hooks') and callable(saliency_tool.remove_hooks): saliency_tool.remove_hooks()
 
         # Aggregate and store results for this model
         avg_iou_full_model = [np.mean(iou_results_full_model[t]) if iou_results_full_model[t] else np.nan for t in thresholds_arr]
-        avg_iou_gio_model = [np.mean(iou_results_gio_model[t]) if iou_results_gio_model[t] else np.nan for t in thresholds_arr]
         
         n_full = len(images_contributing_full_model)
-        n_gio = len(images_contributing_gio_model)
         n_values_for_legend[(model_key, 'Full')] = n_full
-        n_values_for_legend[(model_key, 'Gio')] = n_gio
 
-        print(f"  Finished IoU for {model_key.upper()}: Full (n={n_full}), Gio (n={n_gio})")
+        print(f"  Finished IoU for {model_key.upper()}: Full (n={n_full})")
 
         if n_full > 0:
             col_name_full = f"{model_key.upper()}_Full (n={n_full})"
@@ -231,17 +208,6 @@ def main():
                 best_thresh = thresholds_arr[best_idx]
                 max_iou = avg_iou_full_model[best_idx]
                 best_threshold_details.append(f"  {model_key.upper()} Full: Best Thr={best_thresh:.4f}, Max IoU={max_iou:.4f} (n={n_full})")
-
-
-        if n_gio > 0:
-            col_name_gio = f"{model_key.upper()}_Gio (n={n_gio})"
-            all_results_data[col_name_gio] = avg_iou_gio_model
-            if not pd.Series(avg_iou_gio_model).isnull().all():
-                best_idx = pd.Series(avg_iou_gio_model).idxmax()
-                best_thresh = thresholds_arr[best_idx]
-                max_iou = avg_iou_gio_model[best_idx]
-                best_threshold_details.append(f"  {model_key.upper()} Gio: Best Thr={best_thresh:.4f}, Max IoU={max_iou:.4f} (n={n_gio})")
-
 
     # 4. Create final DataFrame and Save CSV
     results_df = pd.DataFrame(all_results_data)
@@ -267,7 +233,7 @@ def main():
     plt.figure(figsize=(14, 8)) # Wider for more lines
     
     # Define a list of distinct colors and linestyles
-    # Cycle through colors for models, use solid/dashed for Full/Gio
+    # Cycle through colors for models
     model_colors = plt.cm.get_cmap('tab10', len(MODEL_CONFIGS)) 
 
     plotted_anything = False
@@ -278,13 +244,6 @@ def main():
         if n_full > 0 and col_full in results_df.columns and not results_df[col_full].isnull().all():
             plt.plot(results_df['Saliency Binarization Threshold'], results_df[col_full], 
                      marker='o', markersize=4, linestyle='-', label=f"{model_key.upper()} Full", color=model_colors(i))
-            plotted_anything = True
-
-        n_gio = n_values_for_legend.get((model_key, 'Gio'), 0)
-        col_gio = f"{model_key.upper()}_Gio (n={n_gio})"
-        if n_gio > 0 and col_gio in results_df.columns and not results_df[col_gio].isnull().all():
-            plt.plot(results_df['Saliency Binarization Threshold'], results_df[col_gio], 
-                     marker='x', markersize=4, linestyle='--', label=f"{model_key.upper()} Gio Only", color=model_colors(i))
             plotted_anything = True
 
     plt.title(f'All Models IoU vs. Binarization Threshold ({saliency_method_upper})')
