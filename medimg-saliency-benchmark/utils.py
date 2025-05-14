@@ -468,106 +468,37 @@ def create_consensus_mask(
     (after initial processing via process_circled_annotation) will result in an empty consensus.
     The 'filter_type' (e.g. 'open') is applied *after* this initial check for intersection.
     """
-    default_empty_shape = (224, 224)  # Fallback shape
 
-    if not individual_masks:
-        return np.zeros(default_empty_shape, dtype=np.uint8)
 
-    reference_shape = None
+    assert individual_masks
+
     for m in individual_masks:
-        if m is not None and isinstance(m, np.ndarray):
-            reference_shape = m.shape
-            break
-    if reference_shape is None:
-        reference_shape = default_empty_shape
-
-    # Standardize masks: ensure all are ndarray of reference_shape, None becomes empty
-    # This list will contain a mask for *every* expert, even if it's empty.
-    standardized_masks_for_all_experts = []
-    for m_idx, m in enumerate(individual_masks):
-        if m is None:
-            standardized_masks_for_all_experts.append(
-                np.zeros(reference_shape, dtype=np.uint8)
-            )
-        elif isinstance(m, np.ndarray) and m.shape == reference_shape:
-            standardized_masks_for_all_experts.append(m.astype(np.uint8))
-        elif isinstance(m, np.ndarray):  # Shape mismatch
-            # print(f"Warning: Mask {m_idx} shape mismatch {m.shape} vs {reference_shape}. Treating as empty.")
-            standardized_masks_for_all_experts.append(
-                np.zeros(reference_shape, dtype=np.uint8)
-            )
-        else:  # Not an ndarray
-            standardized_masks_for_all_experts.append(
-                np.zeros(reference_shape, dtype=np.uint8)
-            )
-
-    if not standardized_masks_for_all_experts:  # Should be caught by initial check
-        return np.zeros(reference_shape, dtype=np.uint8)
+        # Correct shape
+        assert m.shape == (224, 224)
+        # Non-empty
+        assert m.sum() > 0 
         
-    # Filter out empty masks (as requested) instead of rejecting the entire consensus
+    # For faster processing
+    individual_masks = np.array(individual_masks)
+    assert individual_masks.ndim == 3
+
+    # Intersect all masks
     if consensus_method == "intersection":
-        non_empty_masks = []
-        for i, m_expert in enumerate(standardized_masks_for_all_experts):
-            if m_expert.sum() > 0:
-                non_empty_masks.append(m_expert)
-        
-        # If all masks were empty, return empty consensus
-        if not non_empty_masks:
-            return np.zeros(reference_shape, dtype=np.uint8)
-        
-        # Replace the original list with only non-empty masks
-        standardized_masks_for_all_experts = non_empty_masks
-
-    # Apply the morphological filter (e.g., 'open') to each (now guaranteed non-empty for intersection) standardized mask
-    # For UNION, empty masks will just be OR'd with others.
-    masks_after_internal_filter = []
-    for m_expert in standardized_masks_for_all_experts:
-        # Only apply filter if mask has content, or if it's union (where filter might still be desired on non-empty ones)
-        if m_expert.sum() > 0 or consensus_method == "union":
-            filtered_m = apply_morphological_filter(
-                m_expert, operation=filter_type, kernel_size=filter_kernel_size
-            )
-            masks_after_internal_filter.append(
-                filtered_m
-                if filtered_m is not None
-                else np.zeros(reference_shape, dtype=np.uint8)
-            )
-        else:  # For intersection, this path shouldn't be hit if an empty mask was found above. For others, carry empty.
-            masks_after_internal_filter.append(m_expert.copy())
-
-    # --- Second check for masks that became empty after filtering ---
-    # This is important because the 'open' operation can remove small regions entirely
-    if consensus_method == "intersection":
-        non_empty_filtered_masks = []
-        for i, m_filtered in enumerate(masks_after_internal_filter):
-            if m_filtered.sum() > 0:
-                non_empty_filtered_masks.append(m_filtered)
-        
-        # If all masks became empty after filtering, return empty consensus
-        if not non_empty_filtered_masks:
-            return np.zeros(reference_shape, dtype=np.uint8)
-            
-        # Replace the filtered list with only non-empty masks
-        masks_after_internal_filter = non_empty_filtered_masks
-
-    # --- Perform Consensus ---
-    if consensus_method == "intersection":
-        # At this point, for intersection, all masks in masks_after_internal_filter are non-empty.
-        if masks_after_internal_filter:  # Make sure there's at least one mask
-            consensus_result = masks_after_internal_filter[0].copy()
-            for i in range(1, len(masks_after_internal_filter)):
-                consensus_result = np.logical_and(consensus_result, masks_after_internal_filter[i]).astype(np.uint8)
-        else:
-            # This shouldn't happen due to our earlier checks, but just in case
-            consensus_result = np.zeros(reference_shape, dtype=np.uint8)
+        # Start from the first
+        consensus_result = np.prod(
+            individual_masks,
+            axis=0
+        ).astype(np.uint8)
+    # Softer (take the mean and round)
     elif consensus_method == "union":
-        # Start with an empty mask for union to correctly accumulate all positive pixels
-        consensus_result = np.zeros(reference_shape, dtype=np.uint8)
-        for m_filtered in masks_after_internal_filter:
-            if m_filtered is not None:
-                consensus_result = np.logical_or(consensus_result, m_filtered).astype(np.uint8)
+        consensus_result = np.mean(
+            individual_masks,
+            axis=0
+        ).astype(np.uint8)
     else:
-        raise ValueError(f"Unknown consensus_method: {consensus_method}")
+        raise NotImplementedError(
+            f"Unknown consensus_method: {consensus_method}"
+        )
 
     return consensus_result
 
@@ -586,7 +517,7 @@ def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_mask
     processed_count = 0
     for image_name in unique_image_names:
         raw_masks_tuples = get_masks_for_image_from_metadata(image_name,annotations_metadata_list, annotated_masks_dir, target_size=MODEL_INPUT_SIZE)
-
+ 
         base_processed_masks = []
         for raw_mask, annotator_name in raw_masks_tuples: 
             processed_mask_step1 = process_circled_annotation(
