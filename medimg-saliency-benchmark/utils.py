@@ -490,11 +490,11 @@ def create_consensus_mask(
             axis=0
         ).astype(np.uint8)
     # Softer (take the mean and round)
-    elif consensus_method == "union":
+    elif consensus_method == "mean":
         consensus_result = np.mean(
             individual_masks,
             axis=0
-        ).astype(np.uint8)
+        ).round().astype(np.uint8)
     else:
         raise NotImplementedError(
             f"Unknown consensus_method: {consensus_method}"
