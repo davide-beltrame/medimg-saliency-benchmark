@@ -1,5 +1,0 @@
-model,linear,pretrained,CAM_iou,CAM_pg,GradCAM_iou,GradCAM_pg,Random_iou,Random_pg,CAM_iou_pval,CAM_pg_pval,GradCAM_iou_pval,GradCAM_pg_pval
-an,True,True,0.0212,0.0833,0.0843,0.1667,0.0324,0.0278,0.9082,0.1568,0.0003,0.0248
-in,True,True,0.1277,0.2778,0.1277,0.2778,0.0180,0.0000,0.0000,0.0004,0.0000,0.0004
-rn,True,True,0.0584,0.3611,0.0621,0.3611,0.0231,0.0278,0.2040,0.0002,0.1076,0.0002
-vgg,True,True,0.2078,0.1111,0.1755,0.1389,0.0098,0.0000,0.0000,0.0212,0.0000,0.0110
