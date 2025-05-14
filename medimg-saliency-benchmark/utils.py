@@ -503,13 +503,20 @@ def create_consensus_mask(
 
     if not standardized_masks_for_all_experts:  # Should be caught by initial check
         return np.zeros(reference_shape, dtype=np.uint8)
-
-    # --- Crucial logic for intersection: if any expert's standardized mask is empty, intersection is empty ---
+        
+    # Filter out empty masks (as requested) instead of rejecting the entire consensus
     if consensus_method == "intersection":
+        non_empty_masks = []
         for i, m_expert in enumerate(standardized_masks_for_all_experts):
-            if m_expert.sum() == 0:
-                # print(f"Debug: Expert mask {i} is empty. Intersection result will be empty.")
-                return np.zeros(reference_shape, dtype=np.uint8)
+            if m_expert.sum() > 0:
+                non_empty_masks.append(m_expert)
+        
+        # If all masks were empty, return empty consensus
+        if not non_empty_masks:
+            return np.zeros(reference_shape, dtype=np.uint8)
+        
+        # Replace the original list with only non-empty masks
+        standardized_masks_for_all_experts = non_empty_masks
 
     # Apply the morphological filter (e.g., 'open') to each (now guaranteed non-empty for intersection) standardized mask
     # For UNION, empty masks will just be OR'd with others.
@@ -528,20 +535,31 @@ def create_consensus_mask(
         else:  # For intersection, this path shouldn't be hit if an empty mask was found above. For others, carry empty.
             masks_after_internal_filter.append(m_expert.copy())
 
-    # --- Second check for intersection: if filter_type made a mask empty ---
-    # This is important because the 'open' operation can remove small regions entirely.
+    # --- Second check for masks that became empty after filtering ---
+    # This is important because the 'open' operation can remove small regions entirely
     if consensus_method == "intersection":
+        non_empty_filtered_masks = []
         for i, m_filtered in enumerate(masks_after_internal_filter):
-            if m_filtered.sum() == 0:
-                # print(f"Debug: Mask {i} became empty after filter '{filter_type}'. Intersection result will be empty.")
-                return np.zeros(reference_shape, dtype=np.uint8)
+            if m_filtered.sum() > 0:
+                non_empty_filtered_masks.append(m_filtered)
+        
+        # If all masks became empty after filtering, return empty consensus
+        if not non_empty_filtered_masks:
+            return np.zeros(reference_shape, dtype=np.uint8)
+            
+        # Replace the filtered list with only non-empty masks
+        masks_after_internal_filter = non_empty_filtered_masks
 
     # --- Perform Consensus ---
     if consensus_method == "intersection":
         # At this point, for intersection, all masks in masks_after_internal_filter are non-empty.
-        consensus_result = masks_after_internal_filter[0].copy()
-        for i in range(1, len(masks_after_internal_filter)):
-            consensus_result = np.logical_and(consensus_result, masks_after_internal_filter[i]).astype(np.uint8)
+        if masks_after_internal_filter:  # Make sure there's at least one mask
+            consensus_result = masks_after_internal_filter[0].copy()
+            for i in range(1, len(masks_after_internal_filter)):
+                consensus_result = np.logical_and(consensus_result, masks_after_internal_filter[i]).astype(np.uint8)
+        else:
+            # This shouldn't happen due to our earlier checks, but just in case
+            consensus_result = np.zeros(reference_shape, dtype=np.uint8)
     elif consensus_method == "union":
         # Start with an empty mask for union to correctly accumulate all positive pixels
         consensus_result = np.zeros(reference_shape, dtype=np.uint8)

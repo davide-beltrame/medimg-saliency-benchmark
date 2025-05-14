@@ -19,6 +19,10 @@ We evaluate model performance on the entire test set using the metrics:
 - Recall
 - Precision
 
+
+
+
+
 We sample 50 images from the test set at random and proceed with the "human expert alignment" analysis.
 
 We ask human experts to annotate the regions they deem more important to determine whether or not the patient has pneumonia, we obtain a binary mask.
