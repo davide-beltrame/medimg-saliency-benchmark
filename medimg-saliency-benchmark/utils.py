@@ -37,7 +37,7 @@ CONSENSUS_POST_FILTER_TYPE = (
     "open"  # Filter applied to individual processed masks before consensus
 )
 CONSENSUS_POST_FILTER_KERNEL_SIZE = 3
-CONSENSUS_METHOD = "intersection"
+CONSENSUS_METHOD = "mean"
 
 
 class BaseConfig:
@@ -491,10 +491,10 @@ def create_consensus_mask(
         ).astype(np.uint8)
     # Softer (take the mean and round)
     elif consensus_method == "mean":
-        consensus_result = np.mean(
+        consensus_result = (np.mean(
             individual_masks,
             axis=0
-        ).round().astype(np.uint8)
+        )>=0.5).astype(np.uint8)
     else:
         raise NotImplementedError(
             f"Unknown consensus_method: {consensus_method}"

@@ -1,5 +1,5 @@
 0
-"  AN Full: Best Thr=0.8600, Max IoU=0.0782 (n=36)"
-"  VGG Full: Best Thr=0.7400, Max IoU=0.1378 (n=36)"
-"  RN Full: Best Thr=0.2800, Max IoU=0.0634 (n=36)"
-"  IN Full: Best Thr=0.8400, Max IoU=0.0890 (n=36)"
+"  AN Full: Best Thr=0.8400, Max IoU=0.1375 (n=50)"
+"  VGG Full: Best Thr=0.6200, Max IoU=0.2120 (n=50)"
+"  RN Full: Best Thr=0.3400, Max IoU=0.1224 (n=50)"
+"  IN Full: Best Thr=0.6800, Max IoU=0.1801 (n=50)"

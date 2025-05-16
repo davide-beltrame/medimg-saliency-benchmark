@@ -52,7 +52,7 @@ FILLED_REGION_HOLE_CLOSING_KERNEL_SIZE = 5
 MIN_CONTOUR_AREA_FILTER = 20  
 CONSENSUS_POST_FILTER_TYPE = 'open' 
 CONSENSUS_POST_FILTER_KERNEL_SIZE = 3
-CONSENSUS_METHOD = 'intersection'
+CONSENSUS_METHOD = 'mean'
 
 
 def get_best_threshold_for_model(model_name, saliency_method):

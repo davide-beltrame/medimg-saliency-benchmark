@@ -13,7 +13,7 @@ import saliency
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 CHECKPOINT_DIR = os.path.join(PROJECT_ROOT, "checkpoints")
-ANNOTATIONS_METADATA_PATH = os.path.join(PROJECT_ROOT, "data/annotations/metadata.json")
+ANNOTATIONS_METADATA_PATH = os.path.join(PROJECT_ROOT, "data/annotations/clean_metadata.csv")
 ANNOTATED_MASKS_DIR = os.path.join(PROJECT_ROOT, "data/annotations/annotated")
 ORIGINAL_IMAGES_DIR_FOR_SALIENCY = os.path.join(PROJECT_ROOT, "data/test")
 PLOTS_DIR = os.path.join(PROJECT_ROOT, "plots")
@@ -97,13 +97,14 @@ def main():
     saliency_method_upper = args.saliency_method.upper()
 
     # 1. Load and Prepare Annotation Metadata (once for all models)
-    if not os.path.exists(ANNOTATIONS_METADATA_PATH):
-        print(f"Error: Annotations metadata file not found at {ANNOTATIONS_METADATA_PATH}")
-        return
-    with open(ANNOTATIONS_METADATA_PATH, 'r') as f:
-        annotations_metadata_raw = json.load(f)
+    annotations_metadata_list_filtered = pd.read_csv(
+        os.path.join(
+            os.path.dirname(ANNOTATIONS_METADATA_PATH),
+            "clean_metadata.csv"
+        )
+    ).to_dict(orient='records')
     
-    df_metadata_all = pd.DataFrame(annotations_metadata_raw)
+    df_metadata_all = pd.DataFrame(annotations_metadata_list_filtered)
     df_metadata_no_test = df_metadata_all[~df_metadata_all['annotator_name'].str.contains('test', case=False, na=False)].copy()
     annotations_non_test_list = df_metadata_no_test.to_dict(orient='records')
     print(f"\nTotal non-test annotations loaded: {len(annotations_non_test_list)}")
