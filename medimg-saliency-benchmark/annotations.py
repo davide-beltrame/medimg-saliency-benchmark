@@ -87,7 +87,8 @@ def sanitize(df):
         r".*studente.*":"Medical Student",
         r"specializzand.*":"Resident",
         r".*radiolog.*":"Radiologist",
-        r".*medico.*":"Physician"
+        r".*medico.*":"Physician",
+        r".*pneumolog.*":"Pneumologist"
     }.items():
         df.annotator_profession = df.annotator_profession.str.replace(
             pat=pat,
@@ -212,7 +213,7 @@ def compute_cross_ious(df):
     
     # Plot histogram
     plt.figure(figsize=(6, 4))
-    plt.hist(results.groupby("image_name").iou.mean())
+    plt.hist(results.groupby("image_name").iou.mean(), bins=25)
     plt.title("Average Pairwise IoU per Annotated Image")
     plt.ylabel("Number of Images")
     plt.xlabel("Average IoU")
