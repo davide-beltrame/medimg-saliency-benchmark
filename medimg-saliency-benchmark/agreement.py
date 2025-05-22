@@ -14,27 +14,11 @@ import utils
 from models import BaseCNN 
 import saliency
 
-CHECKPOINT_DIR = os.path.join(
-    os.path.dirname(__file__),
-    "checkpoints"
-)
-ANNOTATIONS_METADATA_PATH = os.path.join(
-    os.path.dirname(__file__),
-    "data/annotations/metadata.json"
-)
-ANNOTATED_MASKS_DIR = os.path.join(
-    os.path.dirname(__file__),
-    "data/annotations/annotated"
-)
-ORIGINAL_IMAGES_DIR_FOR_SALIENCY = os.path.join(
-    os.path.dirname(__file__),
-    "data/annotations/original"
-)
-PLOTS_DIR = os.path.join(
-    os.path.dirname(__file__),
-    "plots"
-)
-
+CHECKPOINT_DIR = os.path.join(os.path.dirname(__file__), "checkpoints")
+ANNOTATIONS_METADATA_PATH = os.path.join(os.path.dirname(__file__), "data/annotations/metadata.json")
+ANNOTATED_MASKS_DIR = os.path.join(os.path.dirname(__file__), "data/annotations/annotated")
+ORIGINAL_IMAGES_DIR_FOR_SALIENCY = os.path.join(os.path.dirname(__file__), "data/annotations/original")
+PLOTS_DIR = os.path.join(os.path.dirname(__file__), "plots")
 
 def get_best_threshold_for_model(model_name, saliency_method):
     """
@@ -61,10 +45,7 @@ def get_best_threshold_for_model(model_name, saliency_method):
     
     return DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
 
-
 def main():
-
-    # Get device
     device = utils.get_device()
     print(f"Using device: {device}")
     
@@ -144,26 +125,18 @@ def main():
             ious_for_current_saliency_method = []
             pgs_for_current_saliency_method = []
             
-            # Saliency method
-            try:
-                if sm_name == "CAM" and hasattr(saliency, 'CAM'):
-                    saliency_tool = saliency.CAM(model.model)
-                elif sm_name == "GradCAM" and hasattr(saliency, 'GradCAM'):
-                    saliency_tool = saliency.GradCAM(model.model)
-                elif sm_name == "RISE" and hasattr(saliency, 'RISE'):
-                    saliency_tool = saliency.RISE(model.model, num_masks=4000, scale_factor=20)
-            except Exception as e:
-                print(f"  Warning: Error initializing {sm_name} for {ckpt_path}: {e}")
+            if sm_name == "CAM" and hasattr(saliency, 'CAM'):
+                saliency_tool = saliency.CAM(model.model)
+            elif sm_name == "GradCAM" and hasattr(saliency, 'GradCAM'):
+                saliency_tool = saliency.GradCAM(model.model)
+            elif sm_name == "RISE" and hasattr(saliency, 'RISE'):
+                saliency_tool = saliency.RISE(model.model, num_masks=4000, scale_factor=20)
 
             # Loop 3: Test Images
             for image_filename in evaluation_images:
-
                 image_path_for_saliency = os.path.join(ORIGINAL_IMAGES_DIR_FOR_SALIENCY, image_filename)
-                
                 assert os.path.exists(image_path_for_saliency)
-
                 input_tensor = utils.load_image_tensor(image_path_for_saliency, device)
-                
                 if input_tensor is None: 
                     continue
                 
@@ -265,20 +238,12 @@ def main():
                     random_values = random_row[f"{metric}_original"].iloc[0]
                     
                     # Perform Mann-Whitney U test
-                    try:
-                        t_stat, p_value = stats.mannwhitneyu(
-                            method_values,
-                            random_values,
-                            alternative='greater'
-                        )
-                        results_by_method[sm_name][i][f"{metric}_pval"] = p_value.item()
-                    except Exception as e:
-                        print(f"Warning: Mann-Whitney U test failed for {sm_name}, {metric}, model {model_name}: {e}")
-                        # Fallback to simple comparison if test fails
-                        if np.mean(method_values) > np.mean(random_values):
-                            results_by_method[sm_name][i][f"{metric}_pval"] = 0.01
-                        else:
-                            results_by_method[sm_name][i][f"{metric}_pval"] = 0.99
+                    t_stat, p_value = stats.mannwhitneyu(
+                        method_values,
+                        random_values,
+                        alternative='greater'
+                    )
+                    results_by_method[sm_name][i][f"{metric}_pval"] = p_value.item()
     
     # Create separate DataFrames for each saliency method
     for sm_name in saliency_methods:
