@@ -25,19 +25,21 @@ ORIGINAL_IMAGES_DIR_FOR_SALIENCY = (
 
 MODEL_INPUT_SIZE = (224, 224)
 
-DEFAULT_SALIENCY_BINARIZATION_THRESHOLD = 0.74
-
+# morphological filter parameters tuned empirically for full consensus, you can read about them in utils.py
 INITIAL_PRE_CLOSING_KERNEL_SIZE = 3
 SOLIDITY_THRESHOLD = 0.6
 OUTLINE_FILL_CLOSING_KERNEL_SIZE = 7
 OUTLINE_EROSION_KERNEL_SIZE = 7
 FILLED_REGION_HOLE_CLOSING_KERNEL_SIZE = 5
 MIN_CONTOUR_AREA_FILTER = 20
-CONSENSUS_POST_FILTER_TYPE = (
-    "open"  # Filter applied to individual processed masks before consensus
-)
+CONSENSUS_POST_FILTER_TYPE = ("open")  # Filter applied to individual processed masks before consensus
 CONSENSUS_POST_FILTER_KERNEL_SIZE = 3
 CONSENSUS_METHOD = "mean"
+
+DEFAULT_SALIENCY_BINARIZATION_THRESHOLD = 0.5
+
+RUN_NAME = "test" # this is only used for the output file name
+CONSENSUS_TYPE = "full" # this is only used for the output file name
 
 
 class BaseConfig:
@@ -460,7 +462,7 @@ def create_consensus_mask(
     individual_masks,
     filter_type="open",
     filter_kernel_size=3,
-    consensus_method="intersection",
+    consensus_method="mean",
 ):
     """
     Creates a consensus mask from a list of individual binary masks.
@@ -507,7 +509,7 @@ def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_mask
     Returns a dictionary: {image_filename: consensus_mask_np}
     Only includes images where the final consensus mask is non-empty.
     """
-    from agreement import RUN_NAME, CONSENSUS_METHOD
+    from agreement import RUN_NAME
     consensus_masks_dict = {}
     unique_image_names = sorted(list(set(record['image_name'] for record in annotations_metadata_list)))
     

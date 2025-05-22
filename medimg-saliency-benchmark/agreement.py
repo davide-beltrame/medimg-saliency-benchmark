@@ -14,9 +14,6 @@ import utils
 from models import BaseCNN 
 import saliency
 
-CONSENSUS_TYPE = "full" # this is only used for the output file name
-RUN_NAME = "test" # this is only used for the output file name
-
 CHECKPOINT_DIR = os.path.join(
     os.path.dirname(__file__),
     "checkpoints"
@@ -38,51 +35,31 @@ PLOTS_DIR = os.path.join(
     "plots"
 )
 
-MODEL_INPUT_SIZE = (224, 224) 
-
-# Default threshold (used for Random and as fallback)
-DEFAULT_SALIENCY_BINARIZATION_THRESHOLD = 0.74
-
-# morphological filter parameters tuned empirically for full consensus, you can read about them in utils.py
-INITIAL_PRE_CLOSING_KERNEL_SIZE = 3 
-SOLIDITY_THRESHOLD = 0.6            
-OUTLINE_FILL_CLOSING_KERNEL_SIZE = 7 
-OUTLINE_EROSION_KERNEL_SIZE = 7      
-FILLED_REGION_HOLE_CLOSING_KERNEL_SIZE = 5 
-MIN_CONTOUR_AREA_FILTER = 20  
-CONSENSUS_POST_FILTER_TYPE = 'open' 
-CONSENSUS_POST_FILTER_KERNEL_SIZE = 3
-CONSENSUS_METHOD = 'mean'
-
 
 def get_best_threshold_for_model(model_name, saliency_method):
     """
     Get the best threshold for a given model and saliency method from threshold analysis files.
     Returns the default threshold if threshold data is not available.
     """
-    try:
-        threshold_file = os.path.join(PLOTS_DIR, f"best_thresholds_{saliency_method.lower()}.csv")
-        if not os.path.exists(threshold_file):
-            return DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
-        
-        # Read the CSV file
-        with open(threshold_file, 'r') as f:
-            lines = f.readlines()
-        
-        # Parse lines to find the best threshold for the model (Full consensus)
-        model_upper = model_name.upper()
-        for line in lines:
-            if f"{model_upper} Full:" in line:
-                # Extract the threshold value
-                import re
-                match = re.search(r"Best Thr=(\d+\.\d+)", line)
-                if match:
-                    return float(match.group(1))
-        
+    threshold_file = os.path.join(PLOTS_DIR, f"best_thresholds_{saliency_method.lower()}.csv")
+    if not os.path.exists(threshold_file):
         return DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
-    except Exception as e:
-        print(f"Error reading threshold for {model_name}: {e}")
-        return DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
+    
+    # Read the CSV file
+    with open(threshold_file, 'r') as f:
+        lines = f.readlines()
+    
+    # Parse lines to find the best threshold for the model (Full consensus)
+    model_upper = model_name.upper()
+    for line in lines:
+        if f"{model_upper} Full:" in line:
+            # Extract the threshold value
+            import re
+            match = re.search(r"Best Thr=(\d+\.\d+)", line)
+            if match:
+                return float(match.group(1))
+    
+    return DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
 
 
 def main():
@@ -154,6 +131,7 @@ def main():
             # Get the best threshold for this model and saliency method
             if sm_name.lower() != "random":
                 threshold = get_best_threshold_for_model(current_config_results['model'], sm_name)
+                threshold = 0.5
                 print(f"  Using threshold {threshold:.4f} for {sm_name} with model {current_config_results['model']}")
             else:
                 # For Random, use a fixed threshold of 0.5 
