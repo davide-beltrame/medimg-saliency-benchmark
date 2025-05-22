@@ -468,8 +468,7 @@ def create_consensus_mask(
     (after initial processing via process_circled_annotation) will result in an empty consensus.
     The 'filter_type' (e.g. 'open') is applied *after* this initial check for intersection.
     """
-
-
+    
     assert individual_masks
 
     for m in individual_masks:

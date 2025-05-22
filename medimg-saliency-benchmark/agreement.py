@@ -2,7 +2,7 @@
 For each model checkpoint, for each saliency methods and for each image compute:
  - IoU
  - Pointing Game
- P-values between saliency scores and random score
+ - P-values between saliency scores and random score
 """
 import os
 import glob

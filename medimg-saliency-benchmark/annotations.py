@@ -18,7 +18,7 @@ from utils import (
 )
 
 # Global settings
-plt.style.use('bmh')
+plt.style.use('bmh') 
 plt.rcParams['figure.autolayout'] = True
 
 # Folder with original images
