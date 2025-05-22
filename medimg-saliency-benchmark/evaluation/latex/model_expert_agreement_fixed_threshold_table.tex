@@ -1,0 +1,18 @@
+
+\begin{table*}[t]
+    \centering
+    \setlength{\tabcolsep}{3pt}
+    \caption{\textbf{Model-Expert Agreement with Fixed Threshold (0.5).} Entries show IoU and PG between model-generated saliency maps and expert annotations, along with p-values.}
+    \begin{tabularx}{\linewidth}{l|YY|YY|YY}
+        \toprule
+        \multirow{2}{*}{Model} & \multicolumn{2}{c|}{GradCAM} & \multicolumn{2}{c|}{CAM} & \multicolumn{2}{c}{Random} \\
+        & IoU & PG & IoU & PG & IoU & PG \\
+        \midrule
+        AlexNet & 9.08 {\scriptsize 0.000} & 28.0 {\scriptsize 0.000} & 6.78 {\scriptsize 0.756} & 12.0 {\scriptsize 0.006} & 5.93 {\scriptsize -} & 0.0 {\scriptsize -} \\
+        InceptionNet-V1 & 16.33 {\scriptsize 0.000} & 38.0 {\scriptsize 0.000} & 16.33 {\scriptsize 0.000} & 38.0 {\scriptsize 0.000} & 5.36 {\scriptsize -} & 0.0 {\scriptsize -} \\
+        ResNet-50 & 11.46 {\scriptsize 0.000} & 20.0 {\scriptsize 0.001} & 10.84 {\scriptsize 0.000} & 20.0 {\scriptsize 0.001} & 4.99 {\scriptsize -} & 0.0 {\scriptsize -} \\
+        VGG-16 & 19.6 {\scriptsize 0.000} & 32.0 {\scriptsize 0.000} & \textbf{\underline{22.19}} {\scriptsize 0.000} & \textbf{\underline{40.0}} {\scriptsize 0.000} & 4.96 {\scriptsize -} & 0.0 {\scriptsize -} \\
+        \bottomrule
+    \end{tabularx}
+    \label{tb:ModelSaliencyComparisonFixedThreshold}
+\end{table*}

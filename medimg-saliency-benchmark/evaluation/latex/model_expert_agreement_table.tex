@@ -1,0 +1,18 @@
+
+\begin{table*}[t]
+    \centering
+    \setlength{\tabcolsep}{2pt}
+    \caption{\textbf{Model-Expert Agreement.} Entries show IoU and PG between model-generated saliency maps and expert annotations, along with p-values and binarization thresholds (thr).}
+    \begin{tabularx}{\linewidth}{l|cYY|cYY|cYY}
+        \toprule
+        \multirow{2}{*}{Model} & \multicolumn{3}{c|}{GradCAM} & \multicolumn{3}{c|}{CAM} & \multicolumn{3}{c}{Random} \\
+        & \,thr & IoU & PG & \,thr & IoU & PG & \,thr & IoU & PG \\
+        \midrule
+        AlexNet & {\scriptsize 0.74} & 8.43 {\scriptsize 0.002} & 16.67 {\scriptsize 0.006} & {\scriptsize 0.60} & 4.31 {\scriptsize 0.416} & 5.56 {\scriptsize 0.080} & {\scriptsize 0.50} & 3.06 {\scriptsize -} & 0.0 {\scriptsize -} \\
+        InceptionNet-V1 & {\scriptsize 0.74} & 12.77 {\scriptsize 0.000} & 27.78 {\scriptsize 0.000} & {\scriptsize 0.84} & 13.84 {\scriptsize 0.000} & 33.33 {\scriptsize 0.000} & {\scriptsize 0.50} & 2.21 {\scriptsize -} & 0.0 {\scriptsize -} \\
+        ResNet-50 & {\scriptsize 0.74} & 6.21 {\scriptsize 0.078} & \textbf{\underline{36.11}} {\scriptsize 0.001} & {\scriptsize 0.74} & 5.84 {\scriptsize 0.192} & \textbf{\underline{36.11}} {\scriptsize 0.001} & {\scriptsize 0.50} & 2.73 {\scriptsize -} & 5.56 {\scriptsize -} \\
+        VGG-16 & {\scriptsize 0.74} & 17.55 {\scriptsize 0.000} & 13.89 {\scriptsize 0.011} & {\scriptsize 0.74} & \textbf{\underline{20.78}} {\scriptsize 0.000} & 11.11 {\scriptsize 0.021} & {\scriptsize 0.50} & 2.36 {\scriptsize -} & 0.0 {\scriptsize -} \\
+        \bottomrule
+    \end{tabularx}
+    \label{tb:ModelSaliencyComparison}
+\end{table*}
