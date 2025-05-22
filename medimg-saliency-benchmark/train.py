@@ -10,7 +10,6 @@ from models import BaseCNN
 from utils import BaseConfig
 
 def main():
-
     # Load config.json file
     parser = argparse.ArgumentParser()
     parser.add_argument("path_to_config", type=str, help="path/to/config.json")
