@@ -130,8 +130,9 @@ def main():
         for sm_name in saliency_methods:
             # Get the best threshold for this model and saliency method
             if sm_name.lower() != "random":
-                threshold = get_best_threshold_for_model(current_config_results['model'], sm_name)
-                threshold = 0.5
+                #threshold = get_best_threshold_for_model(current_config_results['model'], sm_name)
+                from utils import DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
+                threshold = DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
                 print(f"  Using threshold {threshold:.4f} for {sm_name} with model {current_config_results['model']}")
             else:
                 # For Random, use a fixed threshold of 0.5 
@@ -201,9 +202,9 @@ def main():
                     expert_mask_np
                 )
 
-                # Compute pointing game
+                # Compute pointing game using the original non-binarized saliency map
                 pg = utils.pointing_game(
-                    binarized_saliency_map,
+                    saliency_map_np,  # Use raw saliency map instead of binarized
                     expert_mask_np
                 )
 

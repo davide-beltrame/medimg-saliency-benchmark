@@ -36,7 +36,7 @@ CONSENSUS_POST_FILTER_TYPE = ("open")  # Filter applied to individual processed 
 CONSENSUS_POST_FILTER_KERNEL_SIZE = 3
 CONSENSUS_METHOD = "mean"
 
-DEFAULT_SALIENCY_BINARIZATION_THRESHOLD = 0.6
+DEFAULT_SALIENCY_BINARIZATION_THRESHOLD = 0.5
 
 RUN_NAME = "test" # this is only used for the output file name
 CONSENSUS_TYPE = "full" # this is only used for the output file name
