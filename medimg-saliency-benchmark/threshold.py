@@ -7,18 +7,16 @@ import matplotlib.pyplot as plt
 import torch
 
 import utils
+from utils import MODEL_INPUT_SIZE
 from models import BaseCNN
 import saliency
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-
 CHECKPOINT_DIR = os.path.join(PROJECT_ROOT, "checkpoints")
 ANNOTATIONS_METADATA_PATH = os.path.join(PROJECT_ROOT, "data/annotations/clean_metadata.csv")
 ANNOTATED_MASKS_DIR = os.path.join(PROJECT_ROOT, "data/annotations/annotated")
 ORIGINAL_IMAGES_DIR_FOR_SALIENCY = os.path.join(PROJECT_ROOT, "data/test")
 PLOTS_DIR = os.path.join(PROJECT_ROOT, "plots")
-
-MODEL_INPUT_SIZE = (224, 224)
 
 MODEL_CONFIGS = {
     "an": "an_True_True_0.05.ckpt",    
@@ -146,11 +144,7 @@ def main():
         if saliency_method_upper == "CAM":
             if hasattr(model_to_explain, 'linear') and not model_to_explain.linear:
                 print(f"  Warning: CAM selected, loaded model '{type(model_to_explain).__name__}' has linear=False. CAM may not work as expected.")
-            try:
                 saliency_tool = saliency.CAM(model_to_explain)
-            except Exception as e:
-                print(f"  Error initializing CAM for {model_key.upper()}: {e}. Skipping saliency for this model.")
-                continue
         elif saliency_method_upper == "GRADCAM":
             saliency_tool = saliency.GradCAM(model_to_explain)
         elif saliency_method_upper == "RISE":
@@ -222,12 +216,10 @@ def main():
     for detail in best_threshold_details:
         print(detail)
 
-    # create dataframe with the best thresholds and the max iou for each model
-
+    # Create dataframe with the best thresholds and the max iou for each model
     best_thresholds_df = pd.DataFrame(best_threshold_details)
     best_thresholds_df.to_csv(os.path.join(PLOTS_DIR, f"best_thresholds_{saliency_method_upper.lower()}.csv"), index=False)
     print(f"\nBest thresholds saved to {os.path.join(PLOTS_DIR, f'best_thresholds_{saliency_method_upper.lower()}.csv')}")
-
 
     # 5. Generate and Save Plot
     plt.style.use('seaborn-v0_8-whitegrid')
