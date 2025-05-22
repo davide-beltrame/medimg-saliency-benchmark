@@ -36,7 +36,7 @@ CONSENSUS_POST_FILTER_TYPE = ("open")  # Filter applied to individual processed 
 CONSENSUS_POST_FILTER_KERNEL_SIZE = 3
 CONSENSUS_METHOD = "mean"
 
-DEFAULT_SALIENCY_BINARIZATION_THRESHOLD = 0.5
+DEFAULT_SALIENCY_BINARIZATION_THRESHOLD = 0.6
 
 RUN_NAME = "test" # this is only used for the output file name
 CONSENSUS_TYPE = "full" # this is only used for the output file name
@@ -149,14 +149,10 @@ class BootstrapTestCallback(Callback):
             bootstrap_targets = torch.tensor(targets[indices]).long()
 
             # Calculate metrics using torchmetrics
-            try:
-                for name, metric in self.metrics.items():
-                    bootstrap_results[name][i] = metric(
-                        bootstrap_preds, bootstrap_targets
-                    ).item()
-            except Exception as e:
-                print(f"Metrics calculation failed for bootstrap sample {i}: {e}")
-                # Keep the default 0 value for this iteration
+            for name, metric in self.metrics.items():
+                bootstrap_results[name][i] = metric(
+                    bootstrap_preds, bootstrap_targets
+                ).item()
 
         # Calculate confidence intervals
         alpha = 1 - self.confidence_level
@@ -509,7 +505,6 @@ def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_mask
     Returns a dictionary: {image_filename: consensus_mask_np}
     Only includes images where the final consensus mask is non-empty.
     """
-    from agreement import RUN_NAME
     consensus_masks_dict = {}
     unique_image_names = sorted(list(set(record['image_name'] for record in annotations_metadata_list)))
     
@@ -666,14 +661,10 @@ def parse_checkpoint_filename(filename):
 
 def load_image_tensor(image_path, device):
     """Loads an image and converts it to a tensor for model input."""
-    try:
-        img = Image.open(image_path).convert("RGB")
-        transform = transforms.Compose([transforms.Resize(MODEL_INPUT_SIZE), transforms.ToTensor()]) # Scales to [0,1]
-        img_tensor = transform(img).unsqueeze(0)  # Add batch dimension
-        return img_tensor.to(device)
-    except FileNotFoundError:
-        print(f"Warning: Image not found at {image_path}")
-        return None
+    img = Image.open(image_path).convert("RGB")
+    transform = transforms.Compose([transforms.Resize(MODEL_INPUT_SIZE), transforms.ToTensor()]) # Scales to [0,1]
+    img_tensor = transform(img).unsqueeze(0)  # Add batch dimension
+    return img_tensor.to(device)
 
 
 def load_image_np(image_path):

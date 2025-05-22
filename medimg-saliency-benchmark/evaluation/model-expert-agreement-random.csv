@@ -1,5 +1,5 @@
 model,linear,pretrained,iou,pg,threshold
-an,True,True,0.0599,0.0000,0.5000
-in,True,True,0.0601,0.0000,0.5000
-rn,True,True,0.0539,0.0000,0.5000
-vgg,True,True,0.0458,0.0000,0.5000
+an,True,True,0.0625,0.0000,0.5000
+in,True,True,0.0594,0.0000,0.5000
+rn,True,True,0.0492,0.0000,0.5000
+vgg,True,True,0.0524,0.0000,0.5000
