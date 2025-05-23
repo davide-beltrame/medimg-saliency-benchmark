@@ -107,13 +107,17 @@ Calculate and analyze the agreement between model saliency maps and expert annot
 python medimg-saliency-benchmark/agreement.py
 ```
 
-### 7. Correlation Analysis
+### 7. Optimizing Saliency Thresholds
 
-Analyze correlation between model performance and expert alignment:
+Find optimal binarization thresholds for saliency maps by evaluating IoU across different threshold values:
 
 ```bash
-python medimg-saliency-benchmark/correlation.py
+python medimg-saliency-benchmark/threshold.py CAM
+python medimg-saliency-benchmark/threshold.py GradCAM
 ```
+
+This generates plots and CSV files showing how different thresholds affect the agreement between model saliency maps and expert annotations, helping identify the optimal threshold for each model and saliency method.
+
 ## Repository Structure
 
 ```bash
@@ -124,7 +128,6 @@ python medimg-saliency-benchmark/correlation.py
     ├── agreement.py        # Calculates alignment between saliency maps and expert annotations
     ├── annotations.py      # Processes and analyzes expert annotations
     ├── config.json         
-    ├── correlation.py      # Analyzes correlation between performance and alignment
     ├── datamodule.py      
     ├── gridsearch.py       # Hyperparameter optimization
     ├── main.ipynb          # Main notebook for exploratory analysis
