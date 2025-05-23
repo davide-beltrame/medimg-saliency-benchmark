@@ -43,6 +43,11 @@ if __name__ == '__main__':
     )
 
     for path_to_ckpt in os.listdir("./checkpoints"):
+        
+        # Skip non-checkpoint files
+        if not path_to_ckpt.endswith('.ckpt'):
+            print(f"Skipping non-checkpoint file: {path_to_ckpt}")
+            continue
 
         # Info
         print(f"Testing: {path_to_ckpt}")
