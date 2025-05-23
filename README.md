@@ -3,7 +3,7 @@
 This repository contains the code and results for a research project investigating the explainability and human alignment of deep learning models for pneumonia detection in chest X-rays.
 
 *We would like to thank our medical annotators:
-Carmen, Claudia, Diana, Francesca, Giovanni, Giovanni P., Lorenzo, Luca G., Matilde M., Sara, Simone P., Tommaso D.. Their medical expertise and generous support in annotating the images were essential for the success of this project.*
+Carmen, Claudia, Diana, Francesca, Giovanni P., Lorenzo, Luca G., Matilde M., Sara, Simone P., Tommaso D.. Their medical expertise and generous support in annotating the images were essential for the success of this project.*
 
 ## Overview
 
@@ -31,17 +31,7 @@ We compared model-generated saliency maps with expert consensus using:
    - Pointing Game (checking if the model's focus point falls within expert-annotated regions)
 
 ### Key Findings
-
-1. **Model Performance:**
-   - Pretrained models consistently outperformed their non-pretrained counterparts across all architectures
-   - ResNet-50 achieved the best overall performance (94.87% accuracy, 96.00% F1 score)
-
-2. **Expert Alignment:**
-   - VGG-16 produced saliency maps with the highest IoU with expert annotations
-   - ResNet-50 and InceptionNet-V1 performed better at pinpointing diagnostically relevant points (higher Pointing Game scores)
-   - The best-performing model (ResNet-50) was not the most aligned with expert annotations
-
-This suggests that high classification performance does not necessarily imply high interpretability or alignment with human reasoning, highlighting the need to evaluate both accuracy and explainability when assessing medical AI systems.
+The best-performing model is not the most aligned with expert annotations, and some very good predictors are very bad in alignment metrics. This suggests that high classification performance does not necessarily imply high interpretability or alignment with human reasoning, highlighting the need to evaluate both accuracy and explainability when assessing medical AI systems.
 
 ## Project Setup and Usage
 
