@@ -31,40 +31,41 @@ bootstrap = BootstrapTestCallback(
     seed=42
 )
 
-# Trainer
-trainer = pl.Trainer(
-    accelerator="auto",
-    devices="auto",
-    precision="16-mixed",  # if your model was trained with mixed precision
-    logger=False,
-    enable_checkpointing=False,
-    callbacks=[bootstrap]
-)
-
-for path_to_ckpt in os.listdir("./checkpoints"):
-
-    # Info
-    print(f"Testing: {path_to_ckpt}")
-
-    # Get path
-    path_to_ckpt = os.path.join("./checkpoints/", path_to_ckpt)
-
-    # Load trained model
-    model = BaseCNN.load_from_checkpoint(path_to_ckpt)
-
-    # Test and get results
-    # list of dictionaries, one per test dataloader 
-    results = trainer.test(model, datamodule=dm)
-
-    # Save results to json
-    payload = {}
-    payload["batch_size"] = config.batch_size
-    payload["results"] = results
-    path_to_results = os.path.join(
-        "evaluation",
-        os.path.basename(path_to_ckpt) + ".json"
+if __name__ == '__main__':
+    # Trainer
+    trainer = pl.Trainer(
+        accelerator="auto",
+        devices="auto",
+        precision="16-mixed",  # if your model was trained with mixed precision
+        logger=False,
+        enable_checkpointing=False,
+        callbacks=[bootstrap]
     )
-    with open(f"{path_to_results}", "w") as f:
-        json.dump(payload, f, indent=4)
 
-    # break
+    for path_to_ckpt in os.listdir("./checkpoints"):
+
+        # Info
+        print(f"Testing: {path_to_ckpt}")
+
+        # Get path
+        path_to_ckpt = os.path.join("./checkpoints/", path_to_ckpt)
+
+        # Load trained model
+        model = BaseCNN.load_from_checkpoint(path_to_ckpt)
+
+        # Test and get results
+        # list of dictionaries, one per test dataloader 
+        results = trainer.test(model, datamodule=dm)
+
+        # Save results to json
+        payload = {}
+        payload["batch_size"] = config.batch_size
+        payload["results"] = results
+        path_to_results = os.path.join(
+            "evaluation",
+            os.path.basename(path_to_ckpt) + ".json"
+        )
+        with open(f"{path_to_results}", "w") as f:
+            json.dump(payload, f, indent=4)
+
+        # break
