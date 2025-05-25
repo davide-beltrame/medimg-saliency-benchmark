@@ -2,8 +2,7 @@
 
 This repository contains the code and results for a research project investigating the explainability and human alignment of deep learning models for pneumonia detection in chest X-rays.
 
-*We would like to thank our medical annotators:
-Carmen, Claudia, Diana, Francesca, Giovanni P., Lorenzo, Luca G., Matilde M., Sara, Simone P., Tommaso D.. Their medical expertise and generous support in annotating the images were essential for the success of this project.*
+*Special thanks to Carmen M., Claudia, Diana, Elena S., Francesca, Giovanni P., Lorenzo, Luca G., Matilde M., Michele T., Samuele C., Sara, Simone P., Tommaso D.. Your medical expertise and generous support in annotating the images were essential for the success of this project.*
 
 ## Overview
 
