@@ -13,6 +13,7 @@ import pandas as pd
 import utils
 from models import BaseCNN 
 import saliency
+from utils import DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
 
 CHECKPOINT_DIR = os.path.join(os.path.dirname(__file__), "checkpoints")
 ANNOTATIONS_METADATA_PATH = os.path.join(os.path.dirname(__file__), "data/annotations/metadata.json")
@@ -111,9 +112,8 @@ def main():
         for sm_name in saliency_methods:
             # Get the best threshold for this model and saliency method
             if sm_name.lower() != "random":
-                threshold = get_best_threshold_for_model(current_config_results['model'], sm_name)
-                from utils import DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
-                #threshold = DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
+                # threshold = get_best_threshold_for_model(current_config_results['model'], sm_name)
+                threshold = DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
                 print(f"  Using threshold {threshold:.4f} for {sm_name} with model {current_config_results['model']}")
             else:
                 # For Random, use a fixed threshold of 0.5 
@@ -198,12 +198,12 @@ def main():
             method_results = current_config_results.copy()
             
             # Store original lists of values for statistical tests
-            method_results[f"iou_original"] = ious_for_current_saliency_method.copy()
-            method_results[f"pg_original"] = pgs_for_current_saliency_method.copy()
+            method_results["iou_original"] = ious_for_current_saliency_method.copy()
+            method_results["pg_original"] = pgs_for_current_saliency_method.copy()
             
             # Calculate and store the means
-            method_results[f"iou"] = np.mean(ious_for_current_saliency_method).item()
-            method_results[f"pg"] = np.mean(pgs_for_current_saliency_method).item()
+            method_results["iou"] = np.mean(ious_for_current_saliency_method).item()
+            method_results["pg"] = np.mean(pgs_for_current_saliency_method).item()
             
             # Add the threshold used to the results
             method_results["threshold"] = threshold

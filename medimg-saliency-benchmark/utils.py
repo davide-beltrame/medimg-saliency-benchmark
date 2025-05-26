@@ -1,24 +1,29 @@
+import glob
 import json
-import torch
+import os
+
+import cv2
 import numpy as np
+import torch
 from lightning.pytorch.callbacks import Callback
+from PIL import Image, ImageDraw
 from torchmetrics.classification import (
     BinaryAccuracy,
+    BinaryAUROC,
+    BinaryF1Score,
     BinaryPrecision,
     BinaryRecall,
-    BinaryF1Score,
-    BinaryAUROC,
     BinarySpecificity,
 )
-import cv2
-from PIL import Image, ImageDraw
-import os
-import glob
 from torchvision import transforms
 
 CHECKPOINT_DIR = os.path.join(os.path.dirname(__file__), "checkpoints")
-ANNOTATIONS_METADATA_PATH = os.path.join(os.path.dirname(__file__),"data/annotations/metadata.json")
-ANNOTATED_MASKS_DIR = os.path.join(os.path.dirname(__file__),"data/annotations/annotated")
+ANNOTATIONS_METADATA_PATH = os.path.join(
+    os.path.dirname(__file__), "data/annotations/metadata.json"
+)
+ANNOTATED_MASKS_DIR = os.path.join(
+    os.path.dirname(__file__), "data/annotations/annotated"
+)
 ORIGINAL_IMAGES_DIR_FOR_SALIENCY = (
     "data/test"  # Or wherever the original images for saliency evaluation are
 )
@@ -32,14 +37,16 @@ OUTLINE_FILL_CLOSING_KERNEL_SIZE = 7
 OUTLINE_EROSION_KERNEL_SIZE = 7
 FILLED_REGION_HOLE_CLOSING_KERNEL_SIZE = 5
 MIN_CONTOUR_AREA_FILTER = 20
-CONSENSUS_POST_FILTER_TYPE = ("open")  # Filter applied to individual processed masks before consensus
+CONSENSUS_POST_FILTER_TYPE = (
+    "open"  # Filter applied to individual processed masks before consensus
+)
 CONSENSUS_POST_FILTER_KERNEL_SIZE = 3
 CONSENSUS_METHOD = "mean"
 
 DEFAULT_SALIENCY_BINARIZATION_THRESHOLD = 0.5
 
-RUN_NAME = "test" # this is only used for the output file name
-CONSENSUS_TYPE = "full" # this is only used for the output file name
+RUN_NAME = "test"  # this is only used for the output file name
+CONSENSUS_TYPE = "full"  # this is only used for the output file name
 
 
 class BaseConfig:
@@ -220,17 +227,17 @@ def load_mask(mask_path, target_size=(224, 224)):
     White pixels (255) are foreground, black (0) are background.
     """
     mask = Image.open(mask_path).convert("L")  # Convert to grayscale
-    mask = mask.resize(target_size, Image.NEAREST) # Resize to target size using nearest neighbor interpolation
+    mask = mask.resize(
+        target_size, Image.NEAREST
+    )  # Resize to target size using nearest neighbor interpolation
     mask_np = np.array(mask)
-    binary_mask = (mask_np > 128).astype(
-        np.uint8
-    )  # Foreground is 1, background is 0
+    binary_mask = (mask_np > 128).astype(np.uint8)  # Foreground is 1, background is 0
     return binary_mask
 
 
 def process_circled_annotation(
     binary_mask_np,
-    initial_closing_kernel_size=3, 
+    initial_closing_kernel_size=3,
     solidity_threshold=0.6,
     outline_fill_closing_kernel_size=7,
     outline_erosion_kernel_size=7,
@@ -262,13 +269,19 @@ def process_circled_annotation(
     mask_uint8 = binary_mask_np.astype(np.uint8)
 
     # 1. Initial (small) closing to connect very minor breaks and smooth the input.
-    temp_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (initial_closing_kernel_size, initial_closing_kernel_size))
-    processed_mask_for_contours = cv2.morphologyEx(mask_uint8, cv2.MORPH_CLOSE, temp_kernel)
+    temp_kernel = cv2.getStructuringElement(
+        cv2.MORPH_ELLIPSE, (initial_closing_kernel_size, initial_closing_kernel_size)
+    )
+    processed_mask_for_contours = cv2.morphologyEx(
+        mask_uint8, cv2.MORPH_CLOSE, temp_kernel
+    )
 
     # 2. Find ALL external contours on this initially processed mask.
     # cv2.RETR_EXTERNAL retrieves only the extreme outer contours.
     # cv2.CHAIN_APPROX_SIMPLE compresses segments, leaving only their end points.
-    contours, hierarchy = cv2.findContours(processed_mask_for_contours, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, hierarchy = cv2.findContours(
+        processed_mask_for_contours, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
 
     if not contours:
         return np.zeros_like(
@@ -422,7 +435,9 @@ def get_masks_for_image_from_metadata(
     for record in annotations_metadata:
         if record.get("image_name") == image_name_to_find:
             annotation_filename = record.get("annotation_file")
-            annotator_name = record.get("annotator_name", "Unknown Annotator")  # Get annotator name
+            annotator_name = record.get(
+                "annotator_name", "Unknown Annotator"
+            )  # Get annotator name
             if annotation_filename:
                 mask_path = os.path.join(annotated_masks_dir, annotation_filename)
                 mask_paths_found.append(mask_path)
@@ -450,7 +465,9 @@ def apply_morphological_filter(mask, operation="open", kernel_size=3):
     elif operation == "close":
         return cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_CLOSE, kernel)
     else:
-        print(f"Warning: Unknown morphological operation '{operation}'. Returning original mask.")
+        print(
+            f"Warning: Unknown morphological operation '{operation}'. Returning original mask."
+        )
         return mask
 
 
@@ -466,15 +483,15 @@ def create_consensus_mask(
     (after initial processing via process_circled_annotation) will result in an empty consensus.
     The 'filter_type' (e.g. 'open') is applied *after* this initial check for intersection.
     """
-    
+
     assert individual_masks
 
     for m in individual_masks:
         # Correct shape
         assert m.shape == (224, 224)
         # Non-empty
-        assert m.sum() > 0 
-        
+        assert m.sum() > 0
+
     # For faster processing
     individual_masks = np.array(individual_masks)
     assert individual_masks.ndim == 3
@@ -482,20 +499,12 @@ def create_consensus_mask(
     # Intersect all masks
     if consensus_method == "intersection":
         # Start from the first
-        consensus_result = np.prod(
-            individual_masks,
-            axis=0
-        ).astype(np.uint8)
+        consensus_result = np.prod(individual_masks, axis=0).astype(np.uint8)
     # Softer (take the mean and round)
     elif consensus_method == "mean":
-        consensus_result = (np.mean(
-            individual_masks,
-            axis=0
-        )>=0.5).astype(np.uint8)
+        consensus_result = (np.mean(individual_masks, axis=0) >= 0.5).astype(np.uint8)
     else:
-        raise NotImplementedError(
-            f"Unknown consensus_method: {consensus_method}"
-        )
+        raise NotImplementedError(f"Unknown consensus_method: {consensus_method}")
 
     return consensus_result
 
@@ -506,16 +515,27 @@ def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_mask
     Only includes images where the final consensus mask is non-empty.
     """
     consensus_masks_dict = {}
-    unique_image_names = sorted(list(set(record['image_name'] for record in annotations_metadata_list)))
-    
-    print(f"\nRunning {CONSENSUS_METHOD} consensus with threshold {DEFAULT_SALIENCY_BINARIZATION_THRESHOLD}.")
-    print(f"\nGenerating consensus masks for {len(unique_image_names)} unique images...")
+    unique_image_names = sorted(
+        list(set(record["image_name"] for record in annotations_metadata_list))
+    )
+
+    print(
+        f"\nRunning {CONSENSUS_METHOD} consensus with threshold {DEFAULT_SALIENCY_BINARIZATION_THRESHOLD}."
+    )
+    print(
+        f"\nGenerating consensus masks for {len(unique_image_names)} unique images..."
+    )
     processed_count = 0
     for image_name in unique_image_names:
-        raw_masks_tuples = get_masks_for_image_from_metadata(image_name,annotations_metadata_list, annotated_masks_dir, target_size=MODEL_INPUT_SIZE)
- 
+        raw_masks_tuples = get_masks_for_image_from_metadata(
+            image_name,
+            annotations_metadata_list,
+            annotated_masks_dir,
+            target_size=MODEL_INPUT_SIZE,
+        )
+
         base_processed_masks = []
-        for raw_mask, annotator_name in raw_masks_tuples: 
+        for raw_mask, annotator_name in raw_masks_tuples:
             processed_mask_step1 = process_circled_annotation(
                 raw_mask,
                 initial_closing_kernel_size=INITIAL_PRE_CLOSING_KERNEL_SIZE,
@@ -523,9 +543,11 @@ def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_mask
                 outline_fill_closing_kernel_size=OUTLINE_FILL_CLOSING_KERNEL_SIZE,
                 outline_erosion_kernel_size=OUTLINE_EROSION_KERNEL_SIZE,
                 filled_region_hole_closing_kernel_size=FILLED_REGION_HOLE_CLOSING_KERNEL_SIZE,
-                min_contour_area=MIN_CONTOUR_AREA_FILTER
+                min_contour_area=MIN_CONTOUR_AREA_FILTER,
             )
-            if processed_mask_step1 is None: # Ensure it's an array for create_consensus_mask
+            if (
+                processed_mask_step1 is None
+            ):  # Ensure it's an array for create_consensus_mask
                 processed_mask_step1 = np.zeros(MODEL_INPUT_SIZE, dtype=np.uint8)
             base_processed_masks.append(processed_mask_step1)
 
@@ -533,12 +555,12 @@ def get_consensus_masks_for_evaluation(annotations_metadata_list, annotated_mask
             base_processed_masks,
             filter_type=CONSENSUS_POST_FILTER_TYPE,
             filter_kernel_size=CONSENSUS_POST_FILTER_KERNEL_SIZE,
-            consensus_method=CONSENSUS_METHOD
+            consensus_method=CONSENSUS_METHOD,
         )
 
         if final_consensus is not None and final_consensus.sum() > 0:
             consensus_masks_dict[image_name] = final_consensus
-            processed_count +=1
+            processed_count += 1
     print(f"Generated {processed_count} non-empty consensus masks for evaluation.")
     return consensus_masks_dict
 
@@ -642,27 +664,35 @@ def find_checkpoint(model_short_key):
     ckpts = sorted(glob.glob(ckpt_pattern))  # Sort for consistency
 
     if ckpts:
-        selected_ckpt = ckpts[0]  # Pick the first one (e.g., lowest loss if sorted by loss, or just first alphabetically)
+        selected_ckpt = ckpts[
+            0
+        ]  # Pick the first one (e.g., lowest loss if sorted by loss, or just first alphabetically)
         print(f"Found checkpoint for '{model_short_key}': {selected_ckpt}")
         return selected_ckpt
-    
+
 
 def parse_checkpoint_filename(filename):
     """
     Parses a checkpoint filename like 'an_True_False_0.05.ckpt'
     into model_short_key, linear (bool), pretrained (bool).
     """
-    parts = os.path.basename(filename).replace(".ckpt", "").split('_')
+    parts = os.path.basename(filename).replace(".ckpt", "").split("_")
     model_short_key = parts[0]
-    linear_bool = parts[1].lower() == 'true' 
-    pretrained_bool = parts[2].lower() == 'true'
-    return {'model': model_short_key, 'linear': linear_bool, 'pretrained': pretrained_bool}
+    linear_bool = parts[1].lower() == "true"
+    pretrained_bool = parts[2].lower() == "true"
+    return {
+        "model": model_short_key,
+        "linear": linear_bool,
+        "pretrained": pretrained_bool,
+    }
 
 
 def load_image_tensor(image_path, device):
     """Loads an image and converts it to a tensor for model input."""
     img = Image.open(image_path).convert("RGB")
-    transform = transforms.Compose([transforms.Resize(MODEL_INPUT_SIZE), transforms.ToTensor()]) # Scales to [0,1]
+    transform = transforms.Compose(
+        [transforms.Resize(MODEL_INPUT_SIZE), transforms.ToTensor()]
+    )  # Scales to [0,1]
     img_tensor = transform(img).unsqueeze(0)  # Add batch dimension
     return img_tensor.to(device)
 
@@ -676,13 +706,17 @@ def load_image_np(image_path):
 
 
 def binarize_saliency_map(
-    saliency_map_np, method="fixed", threshold_value=DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
+    saliency_map_np,
+    method="fixed",
+    threshold_value=DEFAULT_SALIENCY_BINARIZATION_THRESHOLD,
 ):
     if saliency_map_np is None:
         return None
 
     saliency_map_to_process = saliency_map_np.copy()
-    if saliency_map_to_process.max() == saliency_map_to_process.min():  # Avoid issues with flat maps
+    if (
+        saliency_map_to_process.max() == saliency_map_to_process.min()
+    ):  # Avoid issues with flat maps
         return np.zeros_like(saliency_map_to_process, dtype=np.uint8)
 
     return (saliency_map_np >= threshold_value).astype(np.uint8)
@@ -695,8 +729,12 @@ def generate_random_map(size=MODEL_INPUT_SIZE, grid_size=10):
     rand_x, rand_y = np.random.randint(0, grid_size, 2)
     random_map_small[rand_y, rand_x] = 1.0
     # Upsample to full size
-    random_map_full = cv2.resize(random_map_small, size, interpolation=cv2.INTER_NEAREST)
-    return random_map_full  # Already 0 or 1, effectively binarized by using inter_nearest
+    random_map_full = cv2.resize(
+        random_map_small, size, interpolation=cv2.INTER_NEAREST
+    )
+    return (
+        random_map_full  # Already 0 or 1, effectively binarized by using inter_nearest
+    )
 
 
 def generate_random_mask_like(mask, grid_size, nonzero_perc):
