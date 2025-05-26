@@ -1,6 +1,6 @@
 # Do AI and Human Experts See Pneumonia the Same Way?
 **[Davide Beltrame](https://www.linkedin.com/in/davide-beltrame/)**\*,
-**[Giacomo Cirò](https://www.linkedin.com/in/giacomo-ciro/)**\*,
+**[Giacomo Cirò](https://www.linkedin.com/in/giacomo-ciro/)**\*
 
 Bocconi University  
 Milan, Italy
