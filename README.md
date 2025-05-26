@@ -1,9 +1,15 @@
 # Do AI and Human Experts See Pneumonia the Same Way?
+**[Davide Beltrame](https://www.linkedin.com/in/davide-beltrame/)**\*,
+**[Giacomo Cirò](https://www.linkedin.com/in/giacomo-ciro/)**\*,
+
+Bocconi University  
+Milan, Italy
 
 This repository contains the code and results for a research project investigating the explainability and human alignment of deep learning models for pneumonia detection in chest X-rays.
 
 *Special thanks to Carmen M., Claudia, Diana, Elena S., Francesca, Giovanni P., Lorenzo, Luca G., Matilde M., Michele T., Samuele C., Sara, Simone P., Tommaso D.. Your medical expertise and generous support in annotating the images were essential for the success of this project.*
 
+*Equal contribution, the ordering is alphabetical.
 ## Overview
 
 Deep learning has achieved remarkable performance in medical image analysis, but the opacity of neural network decision-making remains a critical barrier to clinical adoption. This project examines the explainability of convolutional neural networks (CNNs) in diagnosing pneumonia from pediatric chest X-ray images by comparing the regions they deem important with those identified by medical experts.
