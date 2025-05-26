@@ -17,6 +17,7 @@ from torchmetrics.classification import (
 from torch.optim.lr_scheduler import OneCycleLR
 from utils import BaseConfig
 
+
 class BaseCNN(pl.LightningModule):
     """
     The base CNN class implementing the training with binary cross entropy.
@@ -194,7 +195,7 @@ class AlexNetBinary(nn.Module):
         self.features = model.features  # [B, 256, H, W]
         
         # Classifier
-        if self.linear:
+        if self.linear: 
             self.gap = nn.AdaptiveAvgPool2d((1, 1))
             self.classifier = nn.Linear(256, 1)  # AlexNet has 256 features at the last convolutional layer
         else:

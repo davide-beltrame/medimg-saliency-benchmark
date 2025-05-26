@@ -25,6 +25,7 @@ MODEL_CONFIGS = {
     "in": "in_True_True_0.01.ckpt"      
 }
 
+
 def get_expert_consensus_masks_for_specific_annotators(
     group_name,
     filtered_annotations_metadata
@@ -254,6 +255,7 @@ def main():
     plot_path = os.path.join(PLOTS_DIR, plot_filename)
     plt.savefig(plot_path)
     print(f"Plot saved to {plot_path}")
+
 
 if __name__ == "__main__":
     main()

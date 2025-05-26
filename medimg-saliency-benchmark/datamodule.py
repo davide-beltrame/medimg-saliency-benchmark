@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader, Dataset, random_split
 from torchvision import transforms
 from utils import BaseConfig
 
+
 class Dataset(Dataset):
     """
     A custom dataset class to handle data points.

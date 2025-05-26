@@ -9,6 +9,7 @@ from lightning.pytorch.loggers import CSVLogger, WandbLogger
 from models import BaseCNN
 from utils import BaseConfig
 
+
 def main():
     # Load config.json file
     parser = argparse.ArgumentParser()
@@ -76,6 +77,7 @@ def main():
         model,
         datamodule,
     )
+
 
 if __name__ == '__main__':
     main()

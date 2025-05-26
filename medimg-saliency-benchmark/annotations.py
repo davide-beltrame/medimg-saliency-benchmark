@@ -54,6 +54,8 @@ payload = {}
 
 # Global var to cache
 cache = {}
+
+
 def load_with_cache(path_to_mask):
     if path_to_mask not in cache:
         mask = load_mask(
@@ -112,6 +114,7 @@ def sanitize(df):
 
     return df
 
+
 def render_thank_you(df):
     a = df.annotator_name.unique().tolist()
     names = []
@@ -127,6 +130,7 @@ def render_thank_you(df):
         name = name.strip()
         names.append(name)
     payload["thank_you"] = ", ".join(sorted(names))
+
 
 def save_plots(df):
     """
@@ -156,6 +160,7 @@ def save_plots(df):
     plt.xticks(rotation=0)
     plt.ylabel('Number of Annotators')
     plt.savefig(os.path.join(PATH_TO_PLOTS, "demographics.png"))
+
 
 def compute_cross_ious(df):
     """ 
@@ -266,6 +271,7 @@ def compute_cross_ious(df):
     payload["avg_pairwise_iou_random"] = results_random.iou.mean().item()
     payload["iou_vs_random_p_value"] = p_value.item() 
 
+
 def main():
 
     assert os.path.exists(PATH_TO_ORIGINAL)
@@ -305,6 +311,7 @@ def main():
             os.path.dirname(PATH_TO_ANNOTATED),
             "clean_metadata.csv")
     )
+
 
 if __name__ == "__main__":
     main()

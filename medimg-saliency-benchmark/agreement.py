@@ -20,6 +20,7 @@ ANNOTATED_MASKS_DIR = os.path.join(os.path.dirname(__file__), "data/annotations/
 ORIGINAL_IMAGES_DIR_FOR_SALIENCY = os.path.join(os.path.dirname(__file__), "data/annotations/original")
 PLOTS_DIR = os.path.join(os.path.dirname(__file__), "plots")
 
+
 def get_best_threshold_for_model(model_name, saliency_method):
     """
     Get the best threshold for a given model and saliency method from threshold analysis files.
@@ -44,6 +45,7 @@ def get_best_threshold_for_model(model_name, saliency_method):
                 return float(match.group(1))
     
     return DEFAULT_SALIENCY_BINARIZATION_THRESHOLD
+
 
 def main():
     device = utils.get_device()
@@ -275,6 +277,7 @@ def main():
             float_format="%.4f"
         )
         print(f"Results for {sm_name} saved to {csv_output_path}")
+
 
 if __name__ == "__main__":
     main()

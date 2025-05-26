@@ -13,6 +13,8 @@ from models import (
     InceptionNetBinary
 )
 from tqdm import tqdm
+
+
 class CAM:
     """
     Class Activation Map (CAM) saliency map.
@@ -93,6 +95,7 @@ class CAM:
         cam = (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
         # [H, W] in [0, 1]
         return cam  
+
 
 class GradCAM:
     """
@@ -184,6 +187,7 @@ class GradCAM:
         cam = (cam - cam.min()) / (cam.max() - cam.min() + 1e-8)
         # [H, W] in [0, 1]
         return cam  
+
 
 class RISE:
     """

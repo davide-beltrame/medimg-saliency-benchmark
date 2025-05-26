@@ -19,13 +19,11 @@ from torchvision import transforms
 CHECKPOINT_DIR = os.path.join(os.path.dirname(__file__), "checkpoints")
 ANNOTATIONS_METADATA_PATH = os.path.join(os.path.dirname(__file__),"data/annotations/metadata.json")
 ANNOTATED_MASKS_DIR = os.path.join(os.path.dirname(__file__),"data/annotations/annotated")
-ORIGINAL_IMAGES_DIR_FOR_SALIENCY = (
-    "data/test"  # Or wherever the original images for saliency evaluation are
-)
+ORIGINAL_IMAGES_DIR_FOR_SALIENCY = ("data/test")
 
 MODEL_INPUT_SIZE = (224, 224)
 
-# morphological filter parameters tuned empirically for full consensus, you can read about them in utils.py
+# Morphological filter parameters tuned empirically for full consensus, you can read about them in utils.py
 INITIAL_PRE_CLOSING_KERNEL_SIZE = 3
 SOLIDITY_THRESHOLD = 0.6
 OUTLINE_FILL_CLOSING_KERNEL_SIZE = 7
